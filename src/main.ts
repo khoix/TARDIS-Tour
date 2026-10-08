@@ -4,6 +4,7 @@ import { getRoom, ROOMS } from './data/rooms';
 import { buildPrototypeScene } from './scene/prototypeScene';
 import { installTestHook, testHookEnabled } from './scene/testHook';
 import { createViewer } from './scene/viewer';
+import { buildConsoleRoom } from './world/rooms/console/build';
 import { renderInfoPanel } from './ui/infoPanel';
 import { groupPlacedRooms, renderRoomIndex, setIndexSelection } from './ui/roomIndex';
 import './style.css';
@@ -20,7 +21,10 @@ const infoPanel = required<HTMLElement>('#info-panel');
 const regionButtons = required<HTMLElement>('#region-buttons');
 const toggleIndex = required<HTMLButtonElement>('#toggle-index');
 
-const viewer = createViewer(viewport, buildPrototypeScene(ROOMS, V1_CONNECTIONS, LAYOUT));
+const viewer = createViewer(
+  viewport,
+  buildPrototypeScene(ROOMS, V1_CONNECTIONS, LAYOUT, [buildConsoleRoom()]),
+);
 const compact = window.matchMedia('(max-width: 720px)');
 
 function setIndexOpen(open: boolean) {

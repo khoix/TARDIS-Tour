@@ -77,9 +77,9 @@ The **directly supported** edges are B01, B02 and B03 (main entry and console st
 
 ## Acceptance (bible §F4) mapped to tests
 
-| Bible check                                                       | How it is tested                        | Status                                 |
-| ----------------------------------------------------------------- | --------------------------------------- | -------------------------------------- |
-| Data: valid endpoints and source-linked existence                 | `tests/data/integrity.test.ts`          | Active                                 |
-| Topology: BFS from C-M with B28 disabled reaches all placed nodes | `tests/navigation/connectivity.test.ts` | Active                                 |
-| Mesh walkability through real openings                            | Spatial validator                       | Execution 3/4                          |
-| Spatial overlap, floating rooms, unmeasured metric scale          | Validator and data tests                | Partly active: no metric units in data |
+| Bible check                                                       | How it is tested                        | Status                                                                    |
+| ----------------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------- |
+| Data: valid endpoints and source-linked existence                 | `tests/data/integrity.test.ts`          | Active                                                                    |
+| Topology: BFS from C-M with B28 disabled reaches all placed nodes | `tests/navigation/connectivity.test.ts` | Active                                                                    |
+| Mesh walkability through real openings                            | Spatial validator                       | Active for the console room (Ex3); whole map in Ex4                       |
+| Spatial overlap, floating rooms, unmeasured metric scale          | Validator and data tests                | Active for the console room (Ex3); no metric units in data or `src/world` |

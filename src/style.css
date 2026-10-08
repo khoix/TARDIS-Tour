@@ -103,6 +103,7 @@ a:focus-visible {
 }
 
 .room-label,
+.door-label,
 .region-label {
   pointer-events: none;
   white-space: nowrap;
@@ -112,6 +113,12 @@ a:focus-visible {
 .room-label {
   font-size: 0.7rem;
   color: var(--fg);
+}
+
+.door-label {
+  font-size: 0.6rem;
+  font-style: italic;
+  color: #d9b8a8;
 }
 
 .region-label {

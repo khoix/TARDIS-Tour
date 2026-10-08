@@ -9,7 +9,8 @@
  *
  * Provisional (Execution 2): crude boxes that respect the documented vertical order —
  * cultural spine at or above gallery level, maintenance below the lower deck, power core
- * deepest. Rationale per placement: research/layout-hypothesis.md.
+ * deepest. The control-nexus boxes follow the Execution 3 console-room description.
+ * Rationale per placement: research/layout-hypothesis.md.
  */
 
 export type Vec3 = readonly [number, number, number];
@@ -32,14 +33,17 @@ function place(roomId: string, position: Vec3, size: Vec3): RoomTransform {
 }
 
 export const LAYOUT: readonly RoomTransform[] = [
-  // Control nexus: console decks stacked on the rotor axis; exits at gallery and lower deck.
-  place('P-EX', [0, DECK_Y.main, 14], [4, 6, 4]),
-  place('C-M', [0, DECK_Y.main, 0], [20, 6, 20]),
-  place('C-U', [0, DECK_Y.gallery, 0], [24, 5, 24]),
-  place('C-L', [0, DECK_Y.lower, 0], [20, 6, 20]),
-  place('C-XU', [-16, DECK_Y.gallery, 0], [4, 4, 4]),
-  place('C-XL', [16, DECK_Y.lower, 0], [4, 4, 4]),
-  place('C-LAD', [0, -12, 0], [4, 4, 4]),
+  // Control nexus (Execution 3): bounding boxes of the console-room description volumes
+  // (src/world/rooms/console/describe.ts; equality is tested). Shell radius 21; the
+  // threshold and the upper landing sit outside the shell at 0°, the lower landing at 180°,
+  // and the ladder compartment hangs under the lower deck.
+  place('P-EX', [0, DECK_Y.main, 23.5], [4, 6, 4]),
+  place('C-M', [0, DECK_Y.main, 0], [42, 7, 42]),
+  place('C-U', [0, DECK_Y.gallery, 0], [42, 12, 42]),
+  place('C-L', [0, DECK_Y.lower, 0], [42, 7, 42]),
+  place('C-XU', [0, DECK_Y.gallery, 23.5], [4, 4, 4]),
+  place('C-XL', [0, DECK_Y.lower, -23.5], [4, 4, 4]),
+  place('C-LAD', [0, -11.5, 0], [4, 4, 4]),
   // Cultural spine: west of the gallery exit, at or above gallery level.
   place('H-01', [-30, 8, 0], [14, 4, 4]),
   place('H-02', [-30, 8, -18], [4, 4, 16]),

@@ -31,7 +31,8 @@ import {
   MIN_ZOOM,
   orthoFrustum,
 } from './camera/isometric';
-import { type PrototypeScene, type RoomUserData, SELECTED_EMISSIVE } from './prototypeScene';
+import type { MeshTag } from '../world/structure';
+import { type PrototypeScene, SELECTED_EMISSIVE } from './prototypeScene';
 
 /** Pointer travel (CSS px) below which a press counts as a tap rather than a drag. */
 const TAP_SLOP_PX = 6;
@@ -39,6 +40,8 @@ const TAP_MAX_MS = 500;
 const DOUBLE_TAP_MS = 400;
 const DOUBLE_TAP_SLOP_PX = 24;
 const FOCUS_ANIMATION_MS = 450;
+/** Ambient motion (rotor rings) redraws at most this often; interaction renders are immediate. */
+const AMBIENT_FRAME_MS = 66;
 const FOCUS_MARGIN = 0.25;
 const REGION_MARGIN = 0.12;
 const OVERVIEW_MARGIN = 0.06;
@@ -112,10 +115,12 @@ export function createViewer(host: HTMLElement, world: PrototypeScene): Viewer {
   let aspect = 1;
   let needsRender = true;
   let frames = 0;
+  let lastAmbient = -Infinity;
   let animation: { from: CameraPose; to: CameraPose; start: number } | null = null;
   let selected: string | null = null;
   const listeners: ((id: string | null) => void)[] = [];
-  const pickables = [...world.roomMeshes.values()];
+  const pickables = [...world.roomParts.values()].flat();
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
   const raycaster = new Raycaster();
 
   const requestRender = () => {
@@ -175,18 +180,20 @@ export function createViewer(host: HTMLElement, world: PrototypeScene): Viewer {
     );
     raycaster.setFromCamera(ndc, camera);
     const hit = raycaster.intersectObjects(pickables, false).find((h) => h.object.visible);
-    return hit ? (hit.object.userData as RoomUserData).id : null;
+    return hit ? (hit.object.userData as MeshTag).id : null;
   }
 
   function setHighlight(id: string | null, on: boolean) {
     if (id === null) return;
-    const mesh = world.roomMeshes.get(id) as Mesh<never, MeshStandardMaterial> | undefined;
-    mesh?.material.emissive.setHex(on ? SELECTED_EMISSIVE : 0x000000);
-    if (mesh) mesh.material.emissiveIntensity = on ? 0.55 : 1;
+    const parts = (world.roomParts.get(id) ?? []) as readonly Mesh<never, MeshStandardMaterial>[];
+    for (const mesh of parts) {
+      mesh.material.emissive.setHex(on ? SELECTED_EMISSIVE : 0x000000);
+      mesh.material.emissiveIntensity = on ? 0.55 : 1;
+    }
   }
 
   function select(id: string | null) {
-    if (id !== null && !world.roomMeshes.has(id)) throw new Error(`Unknown room ${id}`);
+    if (id !== null && !world.roomParts.has(id)) throw new Error(`Unknown room ${id}`);
     if (id === selected) return;
     setHighlight(selected, false);
     selected = id;
@@ -245,6 +252,13 @@ export function createViewer(host: HTMLElement, world: PrototypeScene): Viewer {
   applyPose(overviewPose());
 
   function loop(now: number) {
+    // Ambient motion (rotor rings) pauses entirely under prefers-reduced-motion, and while
+    // a gesture or camera transition is running so interaction renders get the frame budget.
+    const interacting = active.size > 0 || animation !== null;
+    if (!reducedMotion?.matches && !interacting && now - lastAmbient >= AMBIENT_FRAME_MS) {
+      lastAmbient = now;
+      if (world.tick(now)) requestRender();
+    }
     if (animation) {
       const t = Math.min(1, (now - animation.start) / FOCUS_ANIMATION_MS);
       const eased = 1 - (1 - t) ** 3;
@@ -287,9 +301,9 @@ export function createViewer(host: HTMLElement, world: PrototypeScene): Viewer {
     isAnimating: () => animation !== null,
     roomAt: pickAt,
     screenPointOf(id) {
-      const mesh = world.roomMeshes.get(id);
+      const parts = world.roomParts.get(id);
       const b = world.roomBounds.get(id);
-      if (!mesh || !b || !mesh.visible) return null;
+      if (!parts?.some((m) => m.visible) || !b) return null;
       const rect = canvas.getBoundingClientRect();
       let minX = Infinity;
       let minY = Infinity;
@@ -331,7 +345,8 @@ export function createViewer(host: HTMLElement, world: PrototypeScene): Viewer {
       }
       return null;
     },
-    visibleRooms: () => [...world.roomMeshes].filter(([, m]) => m.visible).map(([id]) => id),
+    visibleRooms: () =>
+      [...world.roomParts].filter(([, parts]) => parts.some((m) => m.visible)).map(([id]) => id),
     renderStats: () => ({
       frames,
       calls: renderer.info.render.calls,
