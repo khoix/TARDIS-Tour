@@ -42,8 +42,15 @@ export function strongestGrade(room: RoomNode): Grade | null {
   return best;
 }
 
-/** Renders an accessible, region-grouped index of placed rooms into `container`. */
-export function renderRoomIndex(container: HTMLElement, rooms: readonly RoomNode[]): HTMLElement {
+/**
+ * Renders an accessible, region-grouped index of placed rooms into `container`. Each room is a
+ * button; activating it calls `onSelect` with the room id.
+ */
+export function renderRoomIndex(
+  container: HTMLElement,
+  rooms: readonly RoomNode[],
+  onSelect?: (id: string) => void,
+): HTMLElement {
   const doc = container.ownerDocument;
   const nav = doc.createElement('nav');
   nav.className = 'room-index';
@@ -61,6 +68,11 @@ export function renderRoomIndex(container: HTMLElement, rooms: readonly RoomNode
     for (const room of group.rooms) {
       const item = doc.createElement('li');
       item.dataset.roomId = room.id;
+      const button = doc.createElement('button');
+      button.type = 'button';
+      button.dataset.roomId = room.id;
+      button.setAttribute('aria-pressed', 'false');
+      if (onSelect) button.addEventListener('click', () => onSelect(room.id));
       const name = doc.createElement('span');
       name.className = 'room-name';
       name.textContent = room.name;
@@ -68,7 +80,8 @@ export function renderRoomIndex(container: HTMLElement, rooms: readonly RoomNode
       meta.className = 'room-meta';
       const grade = strongestGrade(room);
       meta.textContent = `${room.id} · strongest evidence ${grade ?? '—'}`;
-      item.append(name, ' ', meta);
+      button.append(name, ' ', meta);
+      item.append(button);
       list.append(item);
     }
     section.append(list);
@@ -77,4 +90,11 @@ export function renderRoomIndex(container: HTMLElement, rooms: readonly RoomNode
 
   container.replaceChildren(nav);
   return nav;
+}
+
+/** Marks the index button for `id` as pressed (and every other as not pressed). */
+export function setIndexSelection(nav: HTMLElement, id: string | null): void {
+  for (const button of nav.querySelectorAll<HTMLButtonElement>('button[data-room-id]')) {
+    button.setAttribute('aria-pressed', String(button.dataset.roomId === id));
+  }
 }

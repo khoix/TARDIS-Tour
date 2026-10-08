@@ -241,7 +241,7 @@ describe('evidence and sources', () => {
 
   it('contains no metric units in topology data', () => {
     // evidence.ts is excluded: source descriptions legitimately quote lens/other-era figures.
-    const files = ['rooms.ts', 'connections.ts', 'eras.ts'];
+    const files = ['rooms.ts', 'connections.ts', 'eras.ts', 'layout.ts'];
     for (const f of files) {
       const text = readFileSync(new URL(`../../src/data/${f}`, import.meta.url), 'utf8');
       expect(text, f).not.toMatch(/\b\d+(\.\d+)?\s?(m|cm|mm|metres?|meters?)\b/);

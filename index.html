@@ -2,14 +2,27 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>TARDIS Interior Reconstruction</title>
   </head>
   <body>
-    <main>
-      <h1>TARDIS interior — research-driven reconstruction</h1>
-      <p>Known and inferred regions only; not a complete or canonical floor plan.</p>
-      <div id="room-index"></div>
+    <header class="toolbar">
+      <div class="title">
+        <h1>TARDIS interior — research-driven reconstruction</h1>
+        <p>Known and inferred regions only; not a complete or canonical floor plan.</p>
+      </div>
+      <nav class="view-controls" aria-label="View">
+        <button type="button" id="home-view">Home</button>
+        <span id="region-buttons" class="region-buttons"></span>
+        <button type="button" id="toggle-index" aria-controls="room-index" aria-expanded="true">
+          Rooms
+        </button>
+      </nav>
+    </header>
+    <main class="stage">
+      <div id="viewport" class="viewport"></div>
+      <aside id="room-index" class="side-panel index-panel"></aside>
+      <section id="info-panel" class="side-panel info-panel" aria-live="polite" hidden></section>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
