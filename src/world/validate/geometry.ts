@@ -28,6 +28,33 @@ export function onSurface(surface: WalkableSurface, p: Vec3): boolean {
   return surface.shapes.some((s) => onShape(s, p[0], p[2]));
 }
 
+/** Horizontal distance from (x, z) to a footprint shape (0 inside it). */
+export function shapeGap(shape: SurfaceShape, x: number, z: number): number {
+  if (shape.kind === 'rect') {
+    const dx = Math.max(shape.min[0] - x, 0, x - shape.max[0]);
+    const dz = Math.max(shape.min[1] - z, 0, z - shape.max[1]);
+    return Math.hypot(dx, dz);
+  }
+  const r = Math.hypot(x - shape.center[0], z - shape.center[1]);
+  return Math.max(shape.inner - r, 0, r - shape.outer);
+}
+
+/**
+ * Horizontal distance from `p` to the footprint of `surface` when `p` is at its height
+ * (Infinity otherwise): how far a walker standing at `p` would have to step to reach it.
+ */
+export function surfaceGap(surface: WalkableSurface, p: Vec3): number {
+  if (Math.abs(p[1] - surface.y) > EPSILON_NU) return Infinity;
+  return Math.min(...surface.shapes.map((s) => shapeGap(s, p[0], p[2])));
+}
+
+/** Plan bounds [x0, z0, x1, z1] of a footprint shape (an annulus by its outer circle). */
+export function shapeBounds(shape: SurfaceShape): readonly [number, number, number, number] {
+  if (shape.kind === 'rect') return [shape.min[0], shape.min[1], shape.max[0], shape.max[1]];
+  const [x, z] = shape.center;
+  return [x - shape.outer, z - shape.outer, x + shape.outer, z + shape.outer];
+}
+
 export function samePoint(a: Vec3, b: Vec3): boolean {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) <= EPSILON_NU;
 }

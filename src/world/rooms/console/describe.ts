@@ -82,8 +82,8 @@ function footprint(b: BoxPrimitive): SurfaceShape {
   return { kind: 'rect', min: [b.min[0], b.min[2]], max: [b.max[0], b.max[2]] };
 }
 
-function boxVolume(id: string, roomId: string, b: BoxPrimitive): Volume {
-  return { id, roomId, shape: 'box', min: b.min, max: b.max };
+function boxVolume(id: string, ownerId: string, b: BoxPrimitive): Volume {
+  return { id, ownerId, shape: 'box', min: b.min, max: b.max };
 }
 
 /** Floor slab under a box's footprint, `thickness` deep below `top`. */
@@ -257,7 +257,7 @@ export function describeConsoleRoom(p: ConsoleParams = CONSOLE_PARAMS): Structur
   const volumes: Volume[] = [
     {
       id: 'C-L.band',
-      roomId: 'C-L',
+      ownerId: 'C-L',
       shape: 'cylinder',
       center: AXIS,
       radius: p.shellRadius,
@@ -266,7 +266,7 @@ export function describeConsoleRoom(p: ConsoleParams = CONSOLE_PARAMS): Structur
     },
     {
       id: 'C-M.band',
-      roomId: 'C-M',
+      ownerId: 'C-M',
       shape: 'cylinder',
       center: AXIS,
       radius: p.shellRadius,
@@ -275,7 +275,7 @@ export function describeConsoleRoom(p: ConsoleParams = CONSOLE_PARAMS): Structur
     },
     {
       id: 'C-U.band',
-      roomId: 'C-U',
+      ownerId: 'C-U',
       shape: 'cylinder',
       center: AXIS,
       radius: p.shellRadius,
@@ -300,7 +300,7 @@ export function describeConsoleRoom(p: ConsoleParams = CONSOLE_PARAMS): Structur
   const surfaces = [
     {
       id: 'C-M.main-deck',
-      roomId: 'C-M',
+      ownerId: 'C-M',
       y: p.mainY,
       shapes: [
         { kind: 'annulus', center: AXIS, inner: p.consoleRadius + 0.5, outer: p.mainDeckRadius },
@@ -309,7 +309,7 @@ export function describeConsoleRoom(p: ConsoleParams = CONSOLE_PARAMS): Structur
     },
     {
       id: 'C-U.gallery',
-      roomId: 'C-U',
+      ownerId: 'C-U',
       y: p.galleryY,
       shapes: [
         { kind: 'annulus', center: AXIS, inner: p.galleryInnerRadius, outer: p.shellRadius },
@@ -317,14 +317,14 @@ export function describeConsoleRoom(p: ConsoleParams = CONSOLE_PARAMS): Structur
     },
     {
       id: 'C-L.lower-deck',
-      roomId: 'C-L',
+      ownerId: 'C-L',
       y: p.lowerY,
       shapes: [{ kind: 'annulus', center: AXIS, inner: p.hatchRadius, outer: p.shellRadius }],
     },
-    { id: 'P-EX.threshold', roomId: 'P-EX', y: p.mainY, shapes: [footprint(threshold)] },
-    { id: 'C-XU.landing', roomId: 'C-XU', y: p.galleryY, shapes: [footprint(upperLanding)] },
-    { id: 'C-XL.landing', roomId: 'C-XL', y: p.lowerY, shapes: [footprint(lowerLanding)] },
-    { id: 'C-LAD.floor', roomId: 'C-LAD', y: compartmentFloor, shapes: [footprint(compartment)] },
+    { id: 'P-EX.threshold', ownerId: 'P-EX', y: p.mainY, shapes: [footprint(threshold)] },
+    { id: 'C-XU.landing', ownerId: 'C-XU', y: p.galleryY, shapes: [footprint(upperLanding)] },
+    { id: 'C-XL.landing', ownerId: 'C-XL', y: p.lowerY, shapes: [footprint(lowerLanding)] },
+    { id: 'C-LAD.floor', ownerId: 'C-LAD', y: compartmentFloor, shapes: [footprint(compartment)] },
   ] as const satisfies StructureDescription['surfaces'];
 
   // ── Door anchors (every topology anchor of the console nodes) ──

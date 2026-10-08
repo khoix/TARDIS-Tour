@@ -10,18 +10,26 @@ import {
   EdgesGeometry,
   ExtrudeGeometry,
   Group,
+  InstancedMesh,
   LineBasicMaterial,
   LineSegments,
+  Matrix4,
   Mesh,
   MeshStandardMaterial,
   type Object3D,
+  Path,
+  Quaternion,
   Shape,
   Vector2,
+  Vector3,
 } from 'three';
 import type { Vec3 } from '../../data/layout';
+import type { RegionId } from '../../data/types';
 import {
   azimuthVector,
+  type BoxPrimitive,
   type DoorwayPrimitive,
+  type InstancesPrimitive,
   type KitPrimitive,
   type LadderPrimitive,
   type MeshPart,
@@ -32,6 +40,8 @@ import {
   type RibPrimitive,
   type RingPrimitive,
   type StairsPrimitive,
+  type SweepPrimitive,
+  type SweepSection,
 } from '../structure';
 
 export const PART_COLORS: Readonly<Record<Exclude<MeshPart, 'volume'>, number>> = {
@@ -49,7 +59,61 @@ export const PART_COLORS: Readonly<Record<Exclude<MeshPart, 'volume'>, number>> 
   console: 0xc8873a,
   rotor: 0x8fe0f0,
   'rotor-ring': 0xd9a25a,
+  ceiling: 0x2e4a54,
+  catwalk: 0x7fa9b5,
+  shaft: 0x26404a,
+  panel: 0x6fb6c8,
+  'fuel-cell': 0xe0a040,
+  portal: 0xc04fd8,
 };
+
+/**
+ * Greybox tones by region (EXECUTION-PLAN Ex4): warm inhabited spaces, steel maintenance and
+ * dark rust in the power core, so depth reads as a move from inhabited to industrial. These
+ * are legibility shades, not materials (Ex8) and not evidence colours (Ex7 overlay).
+ */
+export const TONE_COLORS: Readonly<Partial<Record<RegionId, Partial<Record<MeshPart, number>>>>> = {
+  cultural: {
+    floor: 0x8c6c4a,
+    wall: 0x5c4634,
+    ceiling: 0x6b5340,
+    rib: 0x3f3024,
+    panel: 0xc9a46a,
+    doorway: 0x9c7e5a,
+    stairs: 0xb39a76,
+    railing: 0xb39a76,
+    catwalk: 0xa08560,
+  },
+  maintenance: {
+    floor: 0x5f6e74,
+    wall: 0x36434a,
+    ceiling: 0x45535a,
+    rib: 0x232c31,
+    panel: 0x8a9ea6,
+    doorway: 0x75878e,
+    stairs: 0x98a6ab,
+    railing: 0x98a6ab,
+    catwalk: 0x84949a,
+    shaft: 0x36434a,
+  },
+  'power-core': {
+    floor: 0x6f3f31,
+    wall: 0x43261f,
+    ceiling: 0x52302a,
+    rib: 0x2a1813,
+    panel: 0xc0643c,
+    doorway: 0x8f5843,
+    stairs: 0xa2684f,
+    railing: 0xa2684f,
+    catwalk: 0xa86a4e,
+    shaft: 0x43261f,
+  },
+};
+
+/** Colour of a part in a tone (the console palette when the tone has no shade for it). */
+export function partColor(part: Exclude<MeshPart, 'volume'>, tone?: RegionId): number {
+  return (tone === undefined ? undefined : TONE_COLORS[tone]?.[part]) ?? PART_COLORS[part];
+}
 
 const OUTLINE_COLOR = 0x0b1418;
 const DEG = Math.PI / 180;
@@ -136,7 +200,10 @@ export function plateGeometry(p: PlatePrimitive): BufferGeometry {
   const full = sweep >= 360;
   // Regular polygons put a flat side facing 0° (vertices at 30° + 60°k for a hexagon).
   const start = p.startDeg ?? (p.sides ? 180 / p.sides : 0);
-  const n = p.sides ?? Math.max(2, Math.ceil((CIRCLE_SEGMENTS * sweep) / 360));
+  // A polygon sector keeps whole faces; a circular one gets enough segments to look round.
+  const n = p.sides
+    ? Math.max(1, Math.round((p.sides * sweep) / 360))
+    : Math.max(2, Math.ceil((CIRCLE_SEGMENTS * sweep) / 360));
   const outer = arcPoints(p.outer, start, sweep, cx, cz, n);
   let shape: Shape;
   if (full) {
@@ -159,6 +226,79 @@ export function plateGeometry(p: PlatePrimitive): BufferGeometry {
   geometry.rotateX(-Math.PI / 2);
   geometry.translate(0, p.bottom, 0);
   return geometry;
+}
+
+function sectionShape(section: SweepSection): Shape {
+  const shape = new Shape(section.outline.map(([s, v]) => new Vector2(s, v)));
+  for (const hole of section.holes ?? []) {
+    shape.holes.push(new Path(hole.map(([s, v]) => new Vector2(s, v))));
+  }
+  return shape;
+}
+
+/**
+ * Extrudes the sections along the run's horizontal length, shears them up the slope (so they
+ * stay vertical), then turns local (x, y, z) onto (across, up, run direction) at `from`.
+ */
+export function sweepGeometry(p: SweepPrimitive): BufferGeometry {
+  const dx = p.to[0] - p.from[0];
+  const dz = p.to[2] - p.from[2];
+  const run = Math.hypot(dx, dz);
+  if (run < 1e-6) throw new Error('A sweep needs a horizontal run; shafts are plates');
+  const geometry = new ExtrudeGeometry(p.sections.map(sectionShape), {
+    depth: run,
+    bevelEnabled: false,
+    curveSegments: 1,
+  });
+  const rise = p.to[1] - p.from[1];
+  geometry.applyMatrix4(new Matrix4().set(1, 0, 0, 0, 0, 1, rise / run, 0, 0, 0, 1, 0, 0, 0, 0, 1));
+  const along = new Vector3(dx / run, 0, dz / run);
+  const across = new Vector3(along.z, 0, -along.x);
+  geometry.applyMatrix4(new Matrix4().makeBasis(across, new Vector3(0, 1, 0), along));
+  geometry.translate(...p.from);
+  return geometry;
+}
+
+function boxGeometry(p: BoxPrimitive): BufferGeometry {
+  const [x0, y0, z0] = p.min;
+  const [x1, y1, z1] = p.max;
+  const geometry = new BoxGeometry(x1 - x0, y1 - y0, z1 - z0);
+  geometry.translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+  return geometry;
+}
+
+function baseGeometry(p: InstancesPrimitive['base']): BufferGeometry {
+  switch (p.type) {
+    case 'sweep':
+      return sweepGeometry(p);
+    case 'plate':
+      return plateGeometry(p);
+    case 'box':
+      return boxGeometry(p);
+  }
+}
+
+/** One instanced mesh for all placements; it carries the element's tag like any mesh. */
+function buildInstances(
+  p: InstancesPrimitive,
+  tag: MeshTag,
+  m: MeshStandardMaterial,
+): InstancedMesh {
+  const mesh = new InstancedMesh(baseGeometry(p.base), m, p.placements.length);
+  mesh.name = `${tag.id}:${tag.part}`;
+  mesh.userData = { ...tag } satisfies MeshTag;
+  const matrix = new Matrix4();
+  const turn = new Quaternion();
+  const up = new Vector3(0, 1, 0);
+  const unit = new Vector3(1, 1, 1);
+  p.placements.forEach((placement, i) => {
+    turn.setFromAxisAngle(up, placement.yawDeg * DEG);
+    mesh.setMatrixAt(i, matrix.compose(new Vector3(...placement.position), turn, unit));
+  });
+  mesh.instanceMatrix.needsUpdate = true;
+  mesh.computeBoundingBox();
+  mesh.computeBoundingSphere();
+  return mesh;
 }
 
 function buildStairs(p: StairsPrimitive, tag: MeshTag, m: MeshStandardMaterial): Object3D[] {
@@ -320,13 +460,17 @@ function buildRing(p: RingPrimitive, tag: MeshTag, m: MeshStandardMaterial): Gro
   return group;
 }
 
-/** Builds one element. Rings come back as a {@link Group} so callers can spin them. */
+/**
+ * Builds one element in its tone. Rings come back as a {@link Group} so callers can spin them;
+ * decorative repeats come back as one instanced mesh.
+ */
 export function buildPrimitive(
   primitive: KitPrimitive,
   tag: MeshTag,
   materials: MaterialCache,
+  tone?: RegionId,
 ): Object3D[] {
-  const m = materials.get(tag, PART_COLORS[tag.part as Exclude<MeshPart, 'volume'>]);
+  const m = materials.get(tag, partColor(tag.part as Exclude<MeshPart, 'volume'>, tone));
   switch (primitive.type) {
     case 'plate':
       return [outline(tagged(plateGeometry(primitive), tag, m))];
@@ -337,6 +481,10 @@ export function buildPrimitive(
       mesh.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
       return [outline(mesh)];
     }
+    case 'sweep':
+      return [outline(tagged(sweepGeometry(primitive), tag, m))];
+    case 'instances':
+      return [buildInstances(primitive, tag, m)];
     case 'stairs':
       return buildStairs(primitive, tag, m);
     case 'ladder':

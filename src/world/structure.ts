@@ -11,8 +11,8 @@
  * cutaway, the evidence overlay and routes read only this tag, never mesh names.
  */
 
-import type { Vec3 } from '../data/layout';
-import type { EdgeKind, Presence, ProvenanceCode } from '../data/types';
+import type { Side, Vec3 } from '../data/layout';
+import type { EdgeKind, Presence, ProvenanceCode, RegionId } from '../data/types';
 
 // ── Mesh tagging contract ────────────────────────────────────────────────────
 
@@ -20,7 +20,10 @@ import type { EdgeKind, Presence, ProvenanceCode } from '../data/types';
 export const EVIDENCE_CLASSES = ['sourced', 'reconstructed', 'inferred', 'speculative'] as const;
 export type EvidenceClass = (typeof EVIDENCE_CLASSES)[number];
 
-/** What a mesh depicts. Kit builders use these; `volume`/`connector` are topology stand-ins. */
+/**
+ * What a mesh depicts. Kit builders use these; `volume`/`connector` are topology stand-ins.
+ * `ceiling` parts are built but hidden in the default map view (src/world/build.ts).
+ */
 export const MESH_PARTS = [
   'volume',
   'connector',
@@ -37,6 +40,12 @@ export const MESH_PARTS = [
   'console',
   'rotor',
   'rotor-ring',
+  'ceiling',
+  'catwalk',
+  'shaft',
+  'panel',
+  'fuel-cell',
+  'portal',
 ] as const;
 export type MeshPart = (typeof MESH_PARTS)[number];
 
@@ -119,18 +128,27 @@ export function polar(center: Vec2, r: number, azimuthDeg: number, y: number): V
   return [center[0] + dx * r, y, center[1] + dz * r];
 }
 
-/** Air space a room occupies. Volumes of different rooms must not overlap. */
+/**
+ * Air space of a room, or of the passage an edge builds between its rooms. Volumes may touch
+ * but never overlap. `ownerId` is the topology id the space belongs to: a room in rooms.ts, or
+ * a connection in connections.ts for a corridor run, stair hall or shaft built for that edge.
+ *
+ * `openings` lists the sides of a box through which walkers leave it (corridor ends, branch
+ * doors). The spatial validator requires each to meet another space: a matching opening of a
+ * kit piece, or a room with an open door anchor there (no dangling corridor ends).
+ */
 export type Volume =
   | {
       readonly id: string;
-      readonly roomId: string;
+      readonly ownerId: string;
       readonly shape: 'box';
       readonly min: Vec3;
       readonly max: Vec3;
+      readonly openings?: readonly Side[];
     }
   | {
       readonly id: string;
-      readonly roomId: string;
+      readonly ownerId: string;
       readonly shape: 'cylinder';
       readonly center: Vec2;
       readonly radius: number;
@@ -150,11 +168,12 @@ export type SurfaceShape =
 
 /**
  * A level floor people can stand on, at height `y`. Its footprint is the union of `shapes`,
- * which must touch or overlap so the surface is one walkable region.
+ * which must touch or overlap so the surface is one walkable region. `ownerId` follows
+ * {@link Volume}: a room, or the connection whose passage floor (corridor deck, landing) it is.
  */
 export interface WalkableSurface {
   readonly id: string;
-  readonly roomId: string;
+  readonly ownerId: string;
   readonly y: number;
   readonly shapes: readonly SurfaceShape[];
 }
@@ -197,8 +216,9 @@ export interface PathSegment {
 /**
  * Prism around a vertical axis between `bottom` and `top`: a disc (`inner = 0`), an annulus,
  * or a sector of either (`startDeg`/`sweepDeg`, azimuth convention). `sides` gives a regular
- * polygon instead of a circle (6 = the hexagonal console). Floor plates, curved wall
- * segments, the console and the rotor column are all plates.
+ * polygon instead of a circle (6 = the hexagonal console); a polygon sector spans whole faces,
+ * so its `startDeg` is a vertex bearing and its `sweepDeg` a multiple of 360 / `sides`. Floor
+ * plates, curved and polygonal wall segments, the console and the rotor column are all plates.
  */
 export interface PlatePrimitive {
   readonly type: 'plate';
@@ -300,6 +320,44 @@ export interface RingPrimitive {
   readonly spin: 1 | -1;
 }
 
+/** Closed polygon in a sweep's cross-section plane, optionally with holes (frames). */
+export interface SweepSection {
+  readonly outline: readonly Vec2[];
+  readonly holes?: readonly (readonly Vec2[])[];
+}
+
+/**
+ * Vertical cross-sections swept along a straight run from `from` to `to`, which is level or
+ * sloped but never vertical. Section points are (s, v): `s` runs across the run along
+ * (dz, 0, −dx) of its horizontal direction (dx, dz), and `v` up from the run line. On a sloped
+ * run the sections stay vertical (a shear), so stair-hall walls follow the flight. Corridor
+ * walls, ceilings, floor decks and support-rib frames are sweeps.
+ */
+export interface SweepPrimitive {
+  readonly type: 'sweep';
+  readonly from: Vec3;
+  readonly to: Vec3;
+  readonly sections: readonly SweepSection[];
+}
+
+/** Rigid placement of a repeat: turn `yawDeg` about +Y (azimuth convention), then move. */
+export interface Placement {
+  readonly position: Vec3;
+  readonly yawDeg: number;
+}
+
+/**
+ * Purely decorative repeats (support-rib frames, roundel and hex panels) drawn as one
+ * instanced mesh. `base` is described around the local origin facing +Z (azimuth 0°) and
+ * placed at every placement. Structure people walk on or that encloses a route is never
+ * instanced.
+ */
+export interface InstancesPrimitive {
+  readonly type: 'instances';
+  readonly base: SweepPrimitive | PlatePrimitive | BoxPrimitive;
+  readonly placements: readonly Placement[];
+}
+
 export type KitPrimitive =
   | PlatePrimitive
   | BoxPrimitive
@@ -308,14 +366,23 @@ export type KitPrimitive =
   | RailingPrimitive
   | DoorwayPrimitive
   | RibPrimitive
-  | RingPrimitive;
+  | RingPrimitive
+  | SweepPrimitive
+  | InstancesPrimitive;
 
 /** One renderable piece: what to build and the tag every resulting mesh carries. */
 export interface StructureElement {
   readonly tag: MeshTag;
   readonly primitive: KitPrimitive;
-  /** Text drawn next to the element (e.g. closed reported doors). */
+  /**
+   * Greybox tone: the region whose shade the element takes, so the map reads from inhabited
+   * to industrial with depth. Omitted for the console's own palette. Not an evidence colour.
+   */
+  readonly tone?: RegionId;
+  /** Text drawn next to the element (closed reported doors, the INF-E bypass). */
   readonly label?: string;
+  /** Where the label sits; doorways default to just above their opening. */
+  readonly labelAt?: Vec3;
 }
 
 export interface StructureLabel {

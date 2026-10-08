@@ -104,6 +104,7 @@ a:focus-visible {
 
 .room-label,
 .door-label,
+.edge-label,
 .region-label {
   pointer-events: none;
   white-space: nowrap;
@@ -119,6 +120,12 @@ a:focus-visible {
   font-size: 0.6rem;
   font-style: italic;
   color: #d9b8a8;
+}
+
+.edge-label {
+  font-size: 0.6rem;
+  font-style: italic;
+  color: #d8a8e8;
 }
 
 .region-label {

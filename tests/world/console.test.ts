@@ -181,8 +181,8 @@ describe('console-room description', () => {
     const hatch = anchor('C-L', 'console-underside').position;
     expect(radius(panel)).toBeGreaterThan(p.shellRadius - 1);
     expect(radius(hatch)).toBeLessThan(p.consoleRadius);
-    const xl = d.volumes.find((v) => v.roomId === 'C-XL');
-    const lad = d.volumes.find((v) => v.roomId === 'C-LAD');
+    const xl = d.volumes.find((v) => v.ownerId === 'C-XL');
+    const lad = d.volumes.find((v) => v.ownerId === 'C-LAD');
     if (!xl || !lad) throw new Error('missing volumes');
     // C-XL is outside the shell at lower-deck level; C-LAD is under the deck on the axis.
     const xlb = volumeBounds(xl);
@@ -243,7 +243,7 @@ describe('console-room description', () => {
     for (const id of CONSOLE_ROOM_IDS) {
       const t = getTransform(id);
       if (!t) throw new Error(`no layout for ${id}`);
-      const vols = d.volumes.filter((v) => v.roomId === id);
+      const vols = d.volumes.filter((v) => v.ownerId === id);
       expect(vols, id).toHaveLength(1);
       expect(volumeBounds(vols[0] as never), id).toEqual(roomBounds(t));
     }

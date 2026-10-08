@@ -2,11 +2,16 @@ import { describe, expect, it } from 'vitest';
 import {
   CONSOLE_RADIUS_NU,
   DECK_Y,
+  getShell,
   getTransform,
   LAYOUT,
   LAYOUT_UNITS,
+  ROOM_SHELLS,
 } from '../../src/data/layout';
-import { PLACED_ROOMS, ROOMS } from '../../src/data/rooms';
+import { getRoom, PLACED_ROOMS, ROOMS } from '../../src/data/rooms';
+import { PROFILES } from '../../src/world/kit/modules';
+import { CONSOLE_ROOM_IDS } from '../../src/world/rooms/console/describe';
+import { DOOR_SIZE } from '../../src/world/rooms/shells';
 import type { RegionId } from '../../src/data/types';
 import { roomBounds } from '../../src/scene/topology';
 
@@ -22,7 +27,7 @@ function regionRooms(region: RegionId): string[] {
   return PLACED_ROOMS.filter((r) => r.region === region).map((r) => r.id);
 }
 
-describe('provisional layout', () => {
+describe('layout (Execution 4)', () => {
   it('covers every placed room exactly once and nothing else', () => {
     const ids = LAYOUT.map((t) => t.roomId);
     expect(new Set(ids).size).toBe(ids.length);
@@ -72,5 +77,55 @@ describe('provisional layout', () => {
         expect(overlaps, `${a.id} overlaps ${c.id}`).toBe(false);
       }
     });
+  });
+});
+
+describe('room shells', () => {
+  const consoleRooms = new Set<string>(CONSOLE_ROOM_IDS);
+
+  it('specify exactly the placed rooms outside the console, once each', () => {
+    const ids = ROOM_SHELLS.map((x) => x.roomId);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect([...ids].sort()).toEqual(placedIds.filter((id) => !consoleRooms.has(id)).sort());
+  });
+
+  it('place a door for every topology anchor of their room, and nothing else', () => {
+    for (const shell of ROOM_SHELLS) {
+      const anchors = (getRoom(shell.roomId)?.anchors ?? []).map((a) => a.id).sort();
+      expect(shell.doors.map((d) => d.anchorId).sort(), shell.roomId).toEqual(anchors);
+    }
+  });
+
+  it('keep every door inside its face and above the floor', () => {
+    for (const shell of ROOM_SHELLS) {
+      const b = roomBounds(getTransform(shell.roomId) as never);
+      for (const door of shell.doors) {
+        const along = door.side === '+x' || door.side === '-x' ? 2 : 0;
+        const half = ((b.max[along] as number) - (b.min[along] as number)) / 2;
+        const subject = `${shell.roomId}.${door.anchorId}`;
+        expect(Math.abs(door.offset) + DOOR_SIZE.standard.width / 2, subject).toBeLessThanOrEqual(
+          half,
+        );
+        const sill = door.sill ?? 0;
+        expect(sill, subject).toBeGreaterThanOrEqual(0);
+        expect(sill + DOOR_SIZE.standard.height, subject).toBeLessThanOrEqual(b.max[1] - b.min[1]);
+      }
+    }
+  });
+
+  it('fit corridor rooms to their profile and keep chambers square', () => {
+    for (const shell of ROOM_SHELLS) {
+      const [w, h, d] = getTransform(shell.roomId)?.size as readonly [number, number, number];
+      if (shell.kind === 'corridor') {
+        const profile = PROFILES[shell.profile ?? 'standard'];
+        const cross = Math.min(w, d);
+        if (shell.overhead) expect(cross).toBeGreaterThanOrEqual(profile.width);
+        else expect([cross, h], shell.roomId).toEqual([profile.width, profile.height]);
+      }
+      if (shell.kind === 'chamber') expect(w, shell.roomId).toBe(d);
+      if (shell.walk === 'catwalk') expect(shell.doors).toHaveLength(2);
+    }
+    expect(getShell('F-01')?.overhead).toBe('fuel-cells');
+    expect(getShell('C-M')).toBeUndefined();
   });
 });

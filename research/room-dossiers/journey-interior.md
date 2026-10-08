@@ -61,6 +61,8 @@ Hexagonal corridor profiles, structural ribs, roundel and hex panels, thresholds
 - **Engine bypass B37:** an authored INF-E service corridor from M-02 to ENG-01. It gives an ordinary route to the engine, because the portal never counts for connectivity.
 - **Cultural branch H-01 → H-02 → library**, reached from the gallery exit. H-02 holds reserved thresholds for the observatory and pool in that order, preserving Clara's sequence without asserting adjacency.
 
+Execution 4 builds this reconstruction as a connected greybox. Placements and rejected alternatives: `research/layout-hypothesis.md`; the built form of each edge: `research/connection-decisions.md`.
+
 ## Evidence grades
 
 Room existence is A or B, as in the table. Every room-to-room placement and corridor is D. B37 is E.
