@@ -1,0 +1,40 @@
+:root {
+  color-scheme: dark;
+  --bg: #0b1418;
+  --fg: #d8e6ea;
+  --muted: #7f99a1;
+  --accent: #e8913a;
+  font-family: system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 16px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+h1 {
+  font-size: 1.25rem;
+}
+
+.room-index h2 {
+  font-size: 1rem;
+  color: var(--accent);
+  margin: 1rem 0 0.25rem;
+}
+
+.room-index ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.room-index li {
+  padding: 0.25rem 0;
+}
+
+.room-meta {
+  color: var(--muted);
+  font-size: 0.85em;
+}
