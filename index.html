@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>TARDIS Interior Reconstruction</title>
+  </head>
+  <body>
+    <header class="toolbar">
+      <div class="title">
+        <h1>TARDIS interior — research-driven reconstruction</h1>
+        <p>Known and inferred regions only; not a complete or canonical floor plan.</p>
+      </div>
+      <nav class="view-controls" aria-label="View">
+        <button type="button" id="home-view">Home</button>
+        <span id="region-buttons" class="region-buttons"></span>
+        <button type="button" id="toggle-index" aria-controls="room-index" aria-expanded="true">
+          Rooms
+        </button>
+        <button
+          type="button"
+          id="toggle-cutaway"
+          aria-controls="cutaway-panel"
+          aria-expanded="false"
+        >
+          Cutaway
+        </button>
+        <button
+          type="button"
+          id="toggle-research"
+          aria-controls="research-panel"
+          aria-expanded="false"
+        >
+          Research
+        </button>
+        <button type="button" id="toggle-route" aria-controls="route-panel" aria-expanded="false">
+          Route
+        </button>
+      </nav>
+    </header>
+    <main class="stage">
+      <div id="viewport" class="viewport"></div>
+      <aside id="room-index" class="side-panel index-panel"></aside>
+      <section id="cutaway-panel" class="side-panel cutaway-panel" hidden></section>
+      <section id="research-panel" class="side-panel cutaway-panel" hidden></section>
+      <section id="route-panel" class="side-panel cutaway-panel" hidden></section>
+      <section id="info-panel" class="side-panel info-panel" aria-live="polite" hidden></section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
