@@ -27,7 +27,15 @@ test('J3: select a room on the canvas and see its metadata', async ({ page, hasT
   const panel = page.locator('#info-panel');
   await expect(panel).toBeVisible();
   await expect(panel.getByRole('heading', { level: 2 })).toHaveText('Library');
-  await expect(panel.locator('dt')).toHaveText(['Presence', 'Appearance', 'Scale', 'State']);
+  await expect(panel.locator('dt')).toHaveText([
+    'Presence',
+    'Appearance',
+    'Scale',
+    'Connection',
+    'State',
+  ]);
+  await expect(panel.locator('.known-indicator')).toHaveText(/^Sourced space — /);
+  await expect(panel.locator('.source-list li').first()).toContainText(/^S\d+ — /);
   await expect(panel.locator('.evidence-records li').first()).toContainText('Grade');
   await expect(panel.locator('.sources a').first()).toHaveAttribute('href', /^https?:\/\//);
   await expect(page.locator('#room-index button[data-room-id="L-01"]')).toHaveAttribute(

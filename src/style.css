@@ -108,6 +108,7 @@ select:focus-visible {
 }
 
 .label-layer {
+  --label-scale: 1;
   position: absolute;
   inset: 0;
   z-index: 1;
@@ -118,33 +119,87 @@ select:focus-visible {
 .door-label,
 .edge-label,
 .feature-label,
-.region-label {
+.region-label,
+.connection-label,
+.anchor-label {
   pointer-events: none;
   white-space: nowrap;
   text-shadow: 0 0 3px #000;
 }
 
 .room-label {
-  font-size: 0.7rem;
+  font-size: calc(0.7rem * var(--label-scale));
   color: var(--fg);
 }
 
 .door-label {
-  font-size: 0.6rem;
+  font-size: calc(0.6rem * var(--label-scale));
   font-style: italic;
   color: #d9b8a8;
 }
 
 .edge-label {
-  font-size: 0.6rem;
+  font-size: calc(0.6rem * var(--label-scale));
   font-style: italic;
   color: #d8a8e8;
 }
 
 .feature-label {
-  font-size: 0.6rem;
+  font-size: calc(0.6rem * var(--label-scale));
   font-style: italic;
   color: #f0d090;
+}
+
+.connection-label {
+  font-size: calc(0.6rem * var(--label-scale));
+  color: #9fd8e0;
+}
+
+.anchor-label {
+  font-size: calc(0.55rem * var(--label-scale));
+  color: #b8c8cc;
+}
+
+.anchor-label.is-closed {
+  font-style: italic;
+  color: var(--muted);
+}
+
+.room-label.is-selected,
+.room-label.on-route,
+.connection-label.on-route {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/*
+ * Progressive labels (Execution 7): the layer's data-label-mode decides which kinds show, and
+ * data-zoom holds back the dense kinds until zoomed in. The visual state's own hiding (section
+ * clip) is an inline style and still wins.
+ */
+.label-layer[data-label-mode='default'] .room-label:not(.is-selected, .on-route),
+.label-layer[data-label-mode='default'] :is(.door-label, .edge-label, .anchor-label),
+.label-layer[data-label-mode='default'] .feature-label:not(.is-selected),
+.label-layer[data-label-mode='default'] .connection-label:not(.on-route),
+.label-layer[data-label-mode='research'] .anchor-label,
+.label-layer[data-label-mode='structure'] .feature-label,
+.label-layer[data-zoom='far'] .anchor-label,
+.label-layer[data-zoom='far'] .connection-label:not(.on-route) {
+  display: none;
+}
+
+.label-layer .label-name,
+.label-layer .label-grades,
+.label-layer .label-kind {
+  display: none;
+}
+
+.label-layer[data-label-mode='default'] .label-name,
+.label-layer .is-selected .label-name,
+.label-layer[data-label-mode='research'] .label-grades,
+.label-layer[data-label-mode='structure'] .label-kind,
+.label-layer[data-label-mode='default'] .on-route .label-kind {
+  display: inline;
 }
 
 .label-layer .is-ghosted {
@@ -245,6 +300,71 @@ select:focus-visible {
 
 .cutaway-panel .panel-actions button {
   flex: 1;
+}
+
+.cutaway-panel fieldset {
+  margin: 8px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.cutaway-panel legend {
+  color: var(--muted);
+}
+
+.cutaway-panel input[type='radio'] {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.legend,
+.route-steps {
+  margin: 4px 0 8px;
+  padding: 0;
+  font-size: 0.85rem;
+}
+
+.legend {
+  list-style: none;
+}
+
+.legend li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.swatch {
+  flex: none;
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  border: 1px solid #0b1418;
+  border-radius: 3px;
+}
+
+.route-steps {
+  padding-left: 1.4rem;
+}
+
+.route-steps li {
+  margin: 4px 0;
+}
+
+.route-summary {
+  margin: 8px 0 4px;
+  color: var(--fg);
+}
+
+.known-indicator {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
 }
 
 .room-index h2 {

@@ -270,3 +270,22 @@ describe('visual-state manager', () => {
     });
   });
 });
+
+describe('Execution 7 layer slots', () => {
+  it('reports the owners a slot claims, and the route tint reaches only those meshes', () => {
+    const { world, visual } = setup();
+    expect(visual.layerTargets('route')).toEqual([]);
+    const edges = new Set(['B37', 'B22']);
+    const tint = { color: 0x3fd8e8, intensity: 0.7 };
+    visual.setLayer('route', (t) =>
+      t.kind === 'connection' && edges.has(t.id) ? { tint, ghost: 1 } : undefined,
+    );
+    expect(visual.layerTargets('route')).toEqual(['connection:B22', 'connection:B37']);
+    for (const m of tagged(world.root)) {
+      const routed = tagOf(m).kind === 'connection' && edges.has(tagOf(m).id);
+      expect(visual.resolved(m)?.tint ?? null).toEqual(routed ? tint : null);
+    }
+    visual.setLayer('route', null);
+    expect(visual.layerTargets('route')).toEqual([]);
+  });
+});

@@ -189,6 +189,17 @@ export class VisualState {
     this.apply();
   }
 
+  /** Owners (`kind:id`, sorted) of the drawn meshes a slot's layer has an opinion on. */
+  layerTargets(slot: LayerSlot): string[] {
+    const layer = this.slots.get(slot);
+    if (!layer) return [];
+    const owners = new Set<string>();
+    for (const e of this.meshes.values()) {
+      if (!e.resolved.hidden && layer(e.tag)) owners.add(ownerKey(e.tag.kind, e.tag.id));
+    }
+    return [...owners].sort();
+  }
+
   /** Camera direction the cut uses (horizontal unit vector towards the camera). */
   setView(view: Vec2 | null): void {
     this.view = view;

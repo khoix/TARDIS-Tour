@@ -2,6 +2,8 @@
 .label-layer,
 #room-index,
 #cutaway-panel,
+#research-panel,
+#route-panel,
 #info-panel {
   visibility: hidden !important;
 }

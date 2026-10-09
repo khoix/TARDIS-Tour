@@ -4,9 +4,29 @@
  * to click real canvas pixels, so selection still goes through real raycasting.
  */
 
-import type { RegionId } from '../data/types';
+import type { EdgeKind, RegionId } from '../data/types';
+import type { Route } from '../systems/navigation/routes';
 import type { VisibilitySnapshot } from '../systems/visibility/manager';
+import type { ResearchSettings } from '../ui/researchPanel';
 import type { CameraState, Viewer } from './viewer';
+
+/** The planned route as plain data (Execution 7). */
+export interface RouteSnapshot {
+  readonly from: string;
+  readonly to: string;
+  readonly allowPortal: boolean;
+  readonly rooms: readonly string[];
+  readonly connections: readonly string[];
+  readonly kinds: readonly EdgeKind[];
+  /** Walk-line length in NU. */
+  readonly length: number;
+}
+
+/** App state outside the viewer that the hook reports. */
+export interface HookSources {
+  route(): Route | null;
+  research(): ResearchSettings;
+}
 
 export interface TardisTestHook {
   /** True once the first frame with the full topology has rendered. */
@@ -26,6 +46,12 @@ export interface TardisTestHook {
   /** Cutaway settings, focus-mode room, isolated rooms and the cut's camera direction. */
   visibility(): VisibilitySnapshot;
   renderStats(): { frames: number; calls: number; triangles: number };
+  /** The route on show, or null (Execution 7). */
+  route(): RouteSnapshot | null;
+  /** Connections whose drawn meshes the route layer highlights, sorted (Execution 7). */
+  routeHighlight(): string[];
+  /** Evidence overlay on/off and the label mode (Execution 7). */
+  research(): ResearchSettings;
   select(id: string | null): void;
   focusRoom(id: string): void;
   focusRegion(region: RegionId): void;
@@ -42,7 +68,20 @@ export function testHookEnabled(search: string, dev: boolean): boolean {
   return dev || new URLSearchParams(search).has('test');
 }
 
-export function installTestHook(viewer: Viewer): TardisTestHook {
+export function routeSnapshot(route: Route | null): RouteSnapshot | null {
+  if (!route) return null;
+  return {
+    from: route.from,
+    to: route.to,
+    allowPortal: route.allowPortal,
+    rooms: route.rooms,
+    connections: route.connections,
+    kinds: route.steps.map((s) => s.kind),
+    length: route.length,
+  };
+}
+
+export function installTestHook(viewer: Viewer, app: HookSources): TardisTestHook {
   const hook: TardisTestHook = {
     get ready() {
       return viewer.renderStats().frames > 0;
@@ -59,6 +98,13 @@ export function installTestHook(viewer: Viewer): TardisTestHook {
     pickableRooms: () => viewer.pickableRooms(),
     visibility: () => viewer.visual.snapshot(),
     renderStats: () => viewer.renderStats(),
+    route: () => routeSnapshot(app.route()),
+    routeHighlight: () =>
+      viewer.visual
+        .layerTargets('route')
+        .filter((key) => key.startsWith('connection:'))
+        .map((key) => key.slice('connection:'.length)),
+    research: () => app.research(),
     select: (id) => viewer.select(id),
     focusRoom: (id) => viewer.focusRoom(id),
     focusRegion: (region) => viewer.focusRegion(region),

@@ -18,6 +18,7 @@ import type { Connection, RegionId, RoomNode } from '../data/types';
 import { REGION_LABELS } from '../ui/roomIndex';
 import { type BuiltDressing, type BuiltStructure, label } from '../world/build';
 import {
+  type AnchorPlacement,
   evidenceClassOfPresence,
   evidenceClassOfProvenance,
   type MeshTag,
@@ -47,6 +48,8 @@ export interface PrototypeScene {
   readonly roomBounds: ReadonlyMap<string, Bounds>;
   /** Walk lines of the edges built as structure (the cutaway's spines for edge meshes). */
   readonly walkLines: ReadonlyMap<string, readonly Vec3[]>;
+  /** Door anchors of the built structures (structure-mode labels). */
+  readonly anchors: readonly AnchorPlacement[];
   readonly regionBounds: ReadonlyMap<RegionId, Bounds>;
   readonly overview: Bounds;
   /** Advances animated structures; returns true when the frame needs re-rendering. */
@@ -182,6 +185,7 @@ export function buildPrototypeScene(
     roomParts,
     roomBounds: boundsById,
     walkLines: new Map(structures.flatMap((s) => [...s.walkLines])),
+    anchors: structures.flatMap((s) => s.anchors),
     regionBounds,
     overview: unionBounds([...boundsById.values()]),
     tick(nowMs) {

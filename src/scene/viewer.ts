@@ -31,6 +31,7 @@ import {
   orthoFrustum,
 } from './camera/isometric';
 import { horizontalView, Throttle, VIEW_THROTTLE_MS } from '../systems/visibility/cutaway';
+import { applyLabelZoom } from '../systems/labels/labels';
 import type { VisualState } from '../systems/visibility/manager';
 import type { BuiltDressing } from '../world/build';
 import type { MeshTag } from '../world/structure';
@@ -63,6 +64,8 @@ export interface Viewer {
   readonly canvas: HTMLCanvasElement;
   /** Cutaway, isolation, selection and (Ex7) overlay/route layers of every world mesh. */
   readonly visual: VisualState;
+  /** The CSS2D label layer (Execution 7 label modes are data attributes on it). */
+  readonly labelLayer: HTMLElement;
   select(id: string | null): void;
   selection(): string | null;
   focusRoom(id: string): void;
@@ -105,6 +108,8 @@ export function createViewer(
   const renderer = new WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setClearColor(new Color(0x0b1418));
+  // The route line clips itself at the section height with a material clipping plane.
+  renderer.localClippingEnabled = true;
   const canvas = renderer.domElement;
   canvas.setAttribute('aria-label', 'Isometric 3D view of the reconstructed interior');
   canvas.setAttribute('role', 'img');
@@ -134,6 +139,7 @@ export function createViewer(
   let needsRender = true;
   let frames = 0;
   let lastAmbient = -Infinity;
+  let labelZoom = NaN;
   let animation: { from: CameraPose; to: CameraPose; start: number } | null = null;
   let selected: string | null = null;
   const listeners: ((id: string | null) => void)[] = [];
@@ -296,6 +302,10 @@ export function createViewer(
     if (needsRender) {
       needsRender = false;
       renderer.render(scene, camera);
+      if (camera.zoom !== labelZoom) {
+        labelZoom = camera.zoom;
+        applyLabelZoom(labels.domElement, labelZoom);
+      }
       labels.render(scene, camera);
       frames++;
       if (frames === 1) resolveFirstFrame();
@@ -307,6 +317,7 @@ export function createViewer(
   return {
     canvas,
     visual,
+    labelLayer: labels.domElement,
     select,
     selection: () => selected,
     focusRoom,

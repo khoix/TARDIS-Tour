@@ -52,7 +52,7 @@ test('each hero room is selectable on the canvas and its panel shows its evidenc
     await expect(page.locator('#info-panel .evidence-records li')).toHaveText(
       room.evidence.map((r) => new RegExp(`^Grade ${r.grade} — `)),
     );
-    await expect(page.locator('#info-panel .evidence-axes dt')).toHaveCount(4);
+    await expect(page.locator('#info-panel .evidence-axes dt')).toHaveCount(5);
   }
 });
 

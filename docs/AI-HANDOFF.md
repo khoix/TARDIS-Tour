@@ -2,7 +2,7 @@
 
 Branch: `claude/tardis-isometric-v1`. Plan: `docs/EXECUTION-PLAN.md`. Rules: `AGENTS.md`.
 
-Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 fast-forwarded `claude/tardis-isometric-v1` to that commit and committed on top, so the plan branch now carries Ex1–Ex6.
+Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 fast-forwarded `claude/tardis-isometric-v1` to that commit and committed on top, so the plan branch now carries Ex1–Ex7.
 
 ## Completed
 
@@ -29,6 +29,12 @@ Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 
   - Picks skip hidden, ghosted, clipped and cut geometry, using the same formulas the shader draws with.
   - A Cutaway toolbar panel with accessible, touch-sized controls.
   - C-LAD is now selected on the canvas under the section clip. The Eye core and the frozen explosion show in the default views. All four baselines were regenerated, because the default view now cuts near walls.
+- **Ex7:** provenance overlay, routes and labels.
+  - Info panel: all five evidence axes (the new Connection axis lists each edge's basis and provenance), a known-vs-inferred indicator, the configuration state, graded records, a resolved source list with links, and "Route to console".
+  - Research overlay through the visual state's `overlay` slot: every mesh coloured by `evidenceClass`, the portal in its own violet, with a text legend.
+  - Routes: Dijkstra by walk-line length over the stable graph (portal toggle), "Route to console", from/to selectors over the placed rooms, the walked edges tinted through the `route` slot, a route tube along the walk lines, and a step list naming each edge kind.
+  - Progressive labels: Regions (default), Research (grades and source notes) and Structure (IDs, anchors, edges) modes. Labels scale with zoom, and anchor and edge labels wait until zoomed in.
+  - No baseline changed: the overlay, route and new labels are off or hidden in the default view, and baselines hide the label layer.
 
 ## Architecture / decisions
 
@@ -68,7 +74,7 @@ Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 
         - `instances`: one sweep, plate or box base at many `{position, yawDeg}` placements. It is only for decorative repeats; nothing walked on or enclosing a route is instanced.
     - Azimuth convention: degrees about +Y, 0° = +Z (the exterior doors), 90° = +X. The helpers are `azimuthVector` and `polar`. Docs use compass shorthand: north = −Z, east = +X.
   - The `build` step draws only what `elements` lists.
-    - `src/world/build.ts#buildStructure` returns `BuiltStructure {root, roomIds, connectionIds, roomParts, roomBounds, walkLines, tick}`; `roomBounds` is the union of each room's volume AABBs, and `walkLines` maps each built edge to its walk line (anchor to anchor). `buildStaticStructure(d)` is for descriptions with no animated parts (it throws on rings).
+    - `src/world/build.ts#buildStructure` returns `BuiltStructure {root, roomIds, connectionIds, roomParts, roomBounds, walkLines, anchors, tick}`. `anchors` (the description's `AnchorPlacement`s, Ex7) feeds the anchor labels, and `PrototypeScene.anchors` collects them; `roomBounds` is the union of each room's volume AABBs, and `walkLines` maps each built edge to its walk line (anchor to anchor). `buildStaticStructure(d)` is for descriptions with no animated parts (it throws on rings).
     - `HIDDEN_BY_DEFAULT = {'ceiling'}`: ceiling meshes are built with `visible = false`. They stay in the scene graph; after build, the visual state's "Hide ceilings" setting owns their visibility.
     - Element labels use class `edge-label` for connection-tagged elements and `door-label` otherwise. Every label carries `userData.labelOf: LabelOwner {kind: 'room'|'connection'|'region', id}`; `label()` in build.ts makes all of them, including the scene's room and region labels.
     - Kit builders live in `src/world/kit/index.ts`. `MaterialCache` gives one material per (tagged node, colour), so highlights never bleed between rooms or edges. `partColor(part, tone)` reads `TONE_COLORS` (cultural warm, maintenance steel, power-core dark rust), then falls back to `PART_COLORS`. Plates, boxes and sweeps get hard-edge outlines, which are not pickable.
@@ -96,6 +102,26 @@ Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 
   - `Viewer` gains `firstFrame()`, `addDressing()` (it extends pickables and re-applies the highlight) and `dressings()`.
   - Test hook: `heroReady`.
   - Labels: `StructureElement.labelKind?: 'feature'` gives class `feature-label`. Door and edge labels are unchanged, so the console's two door labels and the B37 edge label stay unique.
+- **Routes (Ex7, `src/systems/navigation/`).**
+  - `routes.ts` (pure): `planRoute(from, to, roomIds, connections, walkLines, {allowPortal})` returns `Route {from, to, allowPortal, rooms, connections, steps, length}` or null. Edge weight is the walk line's length (`polylineLength`); edges without a walk line are skipped. It reuses `buildGraph` and `shortestPath`, so portals are excluded unless allowed.
+    - `RouteStep {connectionId, kind, portal, from, to, length, points}`: `points` is the walk line oriented in travel order.
+    - `routeLine(route)` concatenates the steps' walk lines. Consecutive steps meet in the room between them, where the line joins the arrival anchor to the departure anchor straight.
+    - `CONSOLE_ROOM_ID = 'C-M'`, and `edgeKindLabel(kind)` (`vestibule_portal` reads "Portal").
+    - Key routes: C-M → L-01 is B02, B04, B07, B08, B09. C-M → ENG-01 is B03, B05, B16, B22, B37 (125.7 NU) with portals off; with the portal allowed it runs B03, B05, B16, B22, B24–B28 (79.5 NU).
+  - `routeView.ts`: `routeLayer(route)` gives the walked edges' meshes `{tint: ROUTE_TINT (0x3fd8e8 at 0.7), ghost: 1}`; the selection's tint outranks it. `createRouteLine()` returns `{root, show(route | null), setSection(y | null)}`: one near-white `TubeGeometry` (radius 0.22 NU, lifted 0.4 NU) whose `raycast` is disabled. It is not a tagged world mesh, so the visual state does not manage it. It is clipped at the section by a material clipping plane (the viewer sets `renderer.localClippingEnabled`).
+  - `main.ts` holds the `RouteQuery {from, to, allowPortal}`, re-plans on every change, and updates the tube, the `route` slot, the label system and the panel together.
+- **Research overlay (Ex7, `src/systems/research/overlay.ts`).** `overlayLayer` fills the `overlay` slot with `{color: EVIDENCE_COLORS[tag.evidenceClass]}` (sourced green, reconstructed blue, inferred yellow, speculative red).
+  - The `portal` part takes `PORTAL_OVERLAY_COLOR` (violet) whatever its provenance class. Glow parts also take the colour as their emissive.
+  - `LEGEND` (five entries with text notes) and `cssColor` feed the legend and the info panel's swatch.
+  - Variants are material swaps, so the overlay adds no draw calls (E2E-checked).
+- **Labels (Ex7, `src/systems/labels/labels.ts`).** `LabelSystem(layer, rooms, connections)`:
+  - `createLabels({walkLines, anchors})` returns a group of new CSS2D labels: one `connection-label` per built edge at its walk line's midpoint (spans: ID, kind, provenance and grades), and one `anchor-label` per door anchor (`is-closed` when closed). `main.ts` adds the group to the world and registers it with the visual state, so the section clip and isolation dimming apply to it.
+  - `register(root)` takes over every label; room labels become spans `label-id`, `label-name` and `label-grades`. `gradesText` lists the distinct grades best first (`grade A C`), never one score.
+  - `setMode(mode)` writes `data-label-mode` on the layer; `setSelection` and `setRoute` toggle `is-selected` and `on-route` on the owners' labels. The rest is CSS in `src/style.css`, and the visual state's inline `display: none` (section clip) still wins.
+    - `default`: region labels, the selected room's labels (ID and name) and the route's room and edge labels.
+    - `research`: every room label with its grades, edge labels with provenance and grades, and the door, edge and feature labels (the source notes). No anchors.
+    - `structure`: room IDs, edge labels with their kind, anchors, and the door and edge labels. No feature labels.
+  - Zoom: the viewer calls `applyLabelZoom(layer, zoom)` when the zoom changes. It sets `--label-scale` (0.85–1.35; label font sizes multiply by it) and `data-zoom` (`far` below 1, `mid`, `near` from 2.5). At `far`, anchor labels and edge labels off the route are hidden. The desktop overview (0.745) and the mobile one (0.441) are both `far`.
 - **Contract 2: mesh tagging.** Every world mesh has `userData: MeshTag {kind: 'room'|'connection', id, part, evidenceClass}`.
   - `part` is one of `MESH_PARTS` (`volume` and `connector` are the box view's stand-ins). Ex4 adds `ceiling`, `catwalk`, `shaft`, `panel`, `fuel-cell` and `portal`. Ex5 adds `stack`, `machine`, `prop`, `debris`, `glow` and `rod`.
   - `GLOW_PARTS` (`glow`, `rod`, `portal`) are self-lit. `MaterialCache` keys materials by glow as well, sets the emissive to the part colour at `GLOW_INTENSITY` 0.85, and records `userData.restEmissive`. Since Ex6 a highlight is a cloned material variant, so deselecting restores the base material and with it the rest emissive. Support-rib frames are instanced `rib` parts; roundel and hex panels are instanced `panel` parts.
@@ -133,12 +159,12 @@ Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 
     - **API for Ex7:**
       - `settings()`, `update(patch)`, `reset()`. Isolating a region or level ends focus mode; focus mode needs a selection and replaces any isolation.
       - `setSelection(id)` (clearing it ends focus mode), `setView(view)`.
-      - `setLayer('overlay' | 'route', fn | null)`.
+      - `setLayer('overlay' | 'route', fn | null)`; Ex7 fills both slots.
+      - `layerTargets(slot)` (Ex7): the sorted `kind:id` owners of drawn meshes the slot's layer has an opinion on (the hook's `routeHighlight`).
       - `snapshot()` returns `VisibilitySnapshot`: the settings plus `focusRoom`, `isolatedRooms` and `view`.
       - `onChange(listener)`, `resolved(object)`, `pick(hits)`, `roomVisible(id)`, `roomPickable(id)`, and the read-outs `levels`, `sectionStops` and `sectionRange`.
     - Each pass memoizes results per tag, so a layer function must depend only on the tag (and state captured when it is set).
     - Labels: hidden above the section, and `is-ghosted` (CSS opacity 0.35) when their owner is outside the isolation; a region label when none of its rooms is isolated.
-  - Ex7 usage: the overlay is `setLayer('overlay', (tag) => ({ color }))` keyed on `tag.evidenceClass` (the portal by part). A route is `setLayer('route', (tag) => (onRoute(tag) ? { tint, ghost: 1 } : undefined))`; the selection's tint outranks it. Route lines can follow `PrototypeScene.walkLines`.
 - **Structural kit, description level (`src/world/kit/modules.ts`).** Pure functions return a `Piece {volumes, surfaces, elements, decor}` for an `Owner {kind, id, tone, evidenceClass}`.
   - `PROFILES`: standard hex 4 × 4 on a 3-NU deck; narrow 3.5 × 3.5 on a 2.5-NU deck.
   - Pieces:
@@ -210,10 +236,16 @@ Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 
   - `screenPointOf(id)`: a client-space pixel where a real click hits that room first. It samples the room's projected footprint (its `roomBounds`), skips points covered by UI, and returns null if the room is fully occluded.
   - `roomAt(x, y)`, `selection()`, `visibleRooms()`, and `renderStats()` (`{frames, calls, triangles}` from `renderer.info`).
   - Actions: `select(id)` (`null` clears), `focusRoom(id)`, `focusRegion(region)`, `resetView()`.
-  - Ex6 added `pickableRooms()` and `visibility()` (the manager's `VisibilitySnapshot`), and `animating()` also covers a pending cut. Ex7 adds route state. Extend this interface; don't fork it.
+  - Ex6 added `pickableRooms()` and `visibility()` (the manager's `VisibilitySnapshot`), and `animating()` also covers a pending cut.
+  - Ex7 added `route()` (`RouteSnapshot {from, to, allowPortal, rooms, connections, kinds, length}` or null), `routeHighlight()` (the connections whose drawn meshes the route layer tints) and `research()` (`{overlay, labelMode}`). `installTestHook(viewer, {route, research})` takes the app state it reports. Extend this interface; don't fork it.
 - **UI.**
   - `src/ui/roomIndex.ts`: each room is a `button[data-room-id][aria-pressed]` that calls `onSelect`, and `setIndexSelection` mirrors the canvas selection.
-  - `src/ui/infoPanel.ts`: name, ID/region/tier, summary, the four axes (state includes observed states), appearances, and graded evidence records with resolved source links. Actions are Focus, Details and Close.
+  - `src/ui/infoPanel.ts`: `renderInfoPanel(container, room, {onFocus, onClose, onRouteToConsole}, connections)`.
+    - Name, ID/region/tier and summary.
+    - The known-vs-inferred indicator: the room's presence class with its overlay swatch, plus "Placement and size are authored".
+    - The five axes: Presence, Appearance, Scale, Connection (`connectionAxis`: one entry per edge, e.g. `B37 to M-02: inferred (INF-E)`, with deferred edges marked) and State (with observed states).
+    - Appearances, graded records with source links, and Sources (`citedSources`: each cited source once, with title, kind, what it verifies and every URL).
+    - Actions: Focus, Route to console (disabled on C-M), Details and Close.
   - At ≤720 px the panel is a bottom sheet that opens collapsed (header only; Details expands it to ≤45% height), the room index starts closed, and the toolbar is one horizontally scrolling row. All buttons are at least 44 px.
   - CSS2D labels sit under the panels (z-index 1 vs 2). `.door-label` marks closed reported doors; `.edge-label` marks the INF-E bypass; `.is-ghosted` dims labels of ghosted owners.
   - `src/ui/cutawayPanel.ts` (Ex6): `renderCutawayPanel(container, options, {onChange, onReset})` returns `{sync(settings, hasSelection)}`.
@@ -221,6 +253,9 @@ Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 
     - `main.ts` wires it to the manager. Entering focus mode also frames the room. Home still resets only the camera.
     - The toolbar's "Cutaway" button (`#toggle-cutaway`, `aria-expanded`) opens `#cutaway-panel`, closed by default. On desktop it is centred at the top between the index and the info panel. At ≤720 px it is a top sheet that alternates with the room index.
     - Every control is at least 44 px. `.region-buttons` no longer shrinks in the scrolling mobile toolbar: it used to, letting later toolbar buttons overlap the region buttons.
+  - `src/ui/researchPanel.ts` (Ex7): `renderResearchPanel(container, {onChange})` returns `{sync(ResearchSettings)}`. It holds the "Evidence overlay" checkbox; the legend (`ul.legend`, labelled "Evidence overlay legend", shown only while the overlay is on); and the "Labels" radios Regions, Research and Structure, each with a visible hint. `DEFAULT_RESEARCH = {overlay: false, labelMode: 'default'}`.
+  - `src/ui/routePanel.ts` (Ex7): `renderRoutePanel(container, rooms, {onChange, onClear})` returns `{sync(query, route)}`. It holds "From" and "To" selects over the placed rooms (grouped by region), "Allow portal (B28)", "Clear route", an `aria-live` summary (`routeSummary`) and `ol.route-steps` (`stepText`, e.g. `Corridor · B37: Engine core (ENG-01) → … (M-02)`, with `data-connection-id` and `data-kind`).
+  - Toolbar: "Research" (`#toggle-research`) and "Route" (`#toggle-route`) open `#research-panel` and `#route-panel`. They share the cutaway panel's styling and top-centre slot, so only one of the three is open at a time; on narrow screens the room index joins that rotation. "Route to console" also opens the route panel.
 - **Sources.** `src/data/evidence.ts` holds 56 sources, mirrored in `research/sources.md` with the same IDs in the same order (enforced by a test). If the data changes, update the generated markdown in the same commit.
 - **Tooling.**
   - TypeScript is pinned to `~6.0.3`, because typescript-eslint 8.71 doesn't support TS 7. `three@^0.186.1` and `@types/three@^0.186.0` are installed.
@@ -245,9 +280,11 @@ Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 
 - `src/world/rooms/console/{params,describe,build}.ts`, `src/world/rooms/shells.ts`, `src/world/corridors/describe.ts`, `src/world/skeleton.ts`
 - `src/world/rooms/hero/{params,describe,heroRooms}.ts`
 - `src/systems/visibility/{state,cutaway,materials,manager}.ts`
-- `src/ui/{roomIndex,infoPanel,cutawayPanel}.ts`, `src/main.ts`, `index.html`, `src/style.css`
+- `src/systems/navigation/{routes,routeView}.ts`, `src/systems/research/overlay.ts`, `src/systems/labels/labels.ts`
+- `src/ui/{roomIndex,infoPanel,cutawayPanel,researchPanel,routePanel}.ts`, `src/main.ts`, `index.html`, `src/style.css`
 - `tests/systems/visibility/{state,cutaway,manager}.test.ts`, `tests/ui/cutawayPanel.test.ts`
-- `e2e/helpers.ts` (`waitHero`, `press`, `setCutawayOpen`, `visibility`, `pickableRooms`), `e2e/{scene,selection,mobile,console,overview,hero,cutaway}.spec.ts`, `e2e/baseline.css`, the snapshots `e2e/console.spec.ts-snapshots/console-room-desktop-linux.png`, `e2e/overview.spec.ts-snapshots/overview-desktop-linux.png` and `e2e/hero.spec.ts-snapshots/{library-region,power-core-region}-desktop-linux.png`, `playwright.config.ts`, `.github/workflows/ci.yml`
+- `tests/navigation/{routes,routeView}.test.ts`, `tests/systems/research/overlay.test.ts`, `tests/systems/labels/labels.test.ts`, `tests/ui/{infoPanel,researchPanel,routePanel}.test.ts`
+- `e2e/helpers.ts` (`waitHero`, `press`, `setCutawayOpen`, `setPanelOpen`, `visibility`, `pickableRooms`, `route`, `routeHighlight`, `research`), `e2e/{scene,selection,mobile,console,overview,hero,cutaway,research,route}.spec.ts`, `e2e/baseline.css`, the snapshots `e2e/console.spec.ts-snapshots/console-room-desktop-linux.png`, `e2e/overview.spec.ts-snapshots/overview-desktop-linux.png` and `e2e/hero.spec.ts-snapshots/{library-region,power-core-region}-desktop-linux.png`, `playwright.config.ts`, `.github/workflows/ci.yml`
 - `research/`:
   - `sources.md`;
   - `room-dossiers/*` (the console dossier carries the Ex3 proportions table; `journey-interior.md` carries the Ex5 known vs inferred feature table);
@@ -258,77 +295,68 @@ Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 
 
 ## Validation
 
-- **Unit:** `npm test` passes: 269 tests in 22 files.
-  - New in Ex6:
-    - `tests/systems/visibility/state.test.ts`:
-      - layer order and composition precedence (hidden and cut are unions; ghost, tint and colour from the highest layer; the selection reveals a ghosted room; the pick threshold; invalid ghosts throw);
-      - the cutaway layer per part and setting;
-      - the seven deck levels, every placed room on one, and the section stops and steps;
-      - region, level and focus isolation, with edges touching the set kept solid;
-      - the selection layer, and no tint for the focused room.
-    - `tests/systems/visibility/cutaway.test.ts`:
-      - room and walk-line spines and their limits;
-      - nearest points, including the weighted projection across a sloped flight;
-      - the camera-facing cut for box rooms (iso and north views), halls along their whole length, multi-leg corridors and the margin;
-      - the section clip;
-      - the clip-aware pick filter (hidden, ghosted, unmanaged, clipped and cut hits are skipped; the nearest accepted hit wins);
-      - the throttle.
-    - `tests/systems/visibility/manager.test.ts` (happy-dom, the real Tier-1 scene plus hero rooms):
-      - every material is patched and owner-specific;
-      - the defaults (ceilings hidden, cut parts cut, nothing ghosted);
-      - the selection highlights only its room, restores the rest emissive and reuses cached variants;
-      - isolation ghosts without hiding, and dims labels;
-      - focus mode overrides the global settings and ends on deselect;
-      - the section hides labels and whole rooms;
-      - real raycasts: the section exposes C-LAD; isolation lets clicks through the console to ENG-01; cut near walls let clicks into E-01, and do not when wall fade is off.
-    - `tests/ui/cutawayPanel.test.ts`: labelled controls, `sync`, the patches each control reports, and the value helpers.
-  - The Ex5 suites are unchanged: `hero.test.ts` (validator, anchors, clearances and per-room features over `describeJourneyMap()`), `heroBuild.test.ts` (tags, parts, labels, `attach`), and the glow and room-circulation cases in `kit.test.ts` and `validate.test.ts`.
+- **Unit:** `npm test` passes: 304 tests in 28 files.
+  - New in Ex7:
+    - `tests/navigation/routes.test.ts` (walk lines from `describeTier1Map()`):
+      - every v1 edge has a walk line;
+      - console → library (B02, B04, B07, B08, B09, with kinds and the summed length);
+      - console → engine via B37 with portals off, and via B28 when allowed (shorter, no B37);
+      - the route to the console from ENG-01, oriented step by step;
+      - no route to ENG-01 without B37 and the portal; trivial and unknown routes;
+      - continuity over every ordered pair of placed rooms: each step's walk line runs from an anchor of its start room to an anchor of its end room, and the route line starts and ends on the end rooms' anchors with no repeated points.
+    - `tests/navigation/routeView.test.ts`: the route layer tints only walked edges; the tube spans −35 to 0 for ENG-01 → C-M, takes no raycasts, clips at the section and clears.
+    - `tests/systems/research/overlay.test.ts`: colours per class, the portal apart, glow parts, the selection outranking the overlay, the legend, and the overlay recolouring every mesh of the real scene (all four classes present) and restoring the base materials when cleared.
+    - `tests/systems/labels/labels.test.ts`: zoom scale and bands, grades text, the midpoint; one edge label per v1 edge and one anchor label per anchor; one room label per placed room with ID, name and grades; modes, the selection and the route's labels.
+    - `tests/systems/visibility/manager.test.ts`: `layerTargets` and the route tint on exactly the routed edges' meshes.
+    - `tests/ui/{infoPanel,researchPanel,routePanel}.test.ts`: the five axes and the connection axis per edge (deferred edges marked; `main.ts` passes all `CONNECTIONS`); the known-vs-inferred indicator; every cited source resolved once with all its URLs; Route to console (disabled on C-M); the overlay toggle and legend; the label-mode radios; the room selectors, portal toggle, step list and summaries.
+  - The Ex6 suites are unchanged apart from the new manager case. `tests/ui/infoPanel.test.ts` now expects five axes (the Ex7 contract).
   - `npm run typecheck`, `npm run lint` and `npm run build` (no warnings) pass. `npx prettier --check .` passes.
-- **E2E:** `npm run test:e2e` passes: 48 passed, 6 skipped, in about 2.9 min. J8 is touch-only, so it skips on desktop; the baselines are desktop-only, so they skip on mobile.
-  - New `e2e/cutaway.spec.ts` (J7, desktop and mobile):
-    - Isolate the power core from the panel: every room is still drawn, only the core is pickable, three region labels dim, and C-M has no clickable pixel. ENG-01 is selected by a real canvas click or tap. "Reset cutaway" restores the default snapshot and all picks.
-    - Focus mode on E-01 (selected on the canvas): only E-01 is pickable, the camera frames it, and closing the room ends focus mode.
-    - Turning wall fade off changes which room a sampled grid of canvas points picks. Showing ceilings adds triangles, and hiding them restores the count.
-    - The panel fits the viewport; its eight controls are at least 44 × 44 px; Lower and Raise step the section; the slider works from the keyboard; on touch the index and the panel take turns.
-  - `e2e/overview.spec.ts`: C-LAD stays in `HIDDEN_IN_OVERVIEW` (it is occluded in the default view), now with the section that exposes it. The second test is J7: it lowers the section to −8 with the panel, selects C-LAD by a real click or tap, then resets and checks C-LAD is occluded again. No room is index-only any more.
-  - J1–J4, J8, `console.spec.ts`, `hero.spec.ts` and the first overview test are unchanged and pass with the cut on.
-- **Visual baselines (desktop, Chromium 1194 + SwiftShader in the cloud container):** all four were regenerated in Ex6.
-  - Authorization: the Ex6 prompt allows it when the default view changes intentionally.
-  - Justification: wall fade is on by default, so near walls are cut in every default view. That is the architectural cutaway the build plan asks for (DoD 4 and 6), and it was the handoff's open item for deep hero detail. The old baselines failed.
-  - Changed pixels, old against new: `console-room` 32.09%, `library-region` 28.74%, `power-core-region` 23.44%, `overview` 12.03%.
-  - `power-core-region` now shows the E-01 Eye core and the ENG-01 frozen explosion (the Ex5 re-check).
-- **Performance:** `renderStats` in the desktop overview is unchanged at 1265 calls and 34,428 triangles, with or without isolation: variants and the shader add no draw calls.
-- **CI:** not observed running from this session (no GitHub Actions access here). If CI's Chromium renders a baseline differently beyond the 1% tolerance, regenerate it on Linux only, with authorization.
+- **E2E:** `npm run test:e2e` passes: 56 passed, 6 skipped, in about 3.8 min. J8 is touch-only, so it skips on desktop; the baselines are desktop-only, so they skip on mobile.
+  - New `e2e/research.spec.ts` (desktop and mobile, reduced motion):
+    - J5: the overlay is off by default and the legend hidden. Turning it on from the Research panel shows the five legend entries with swatches, changes the canvas pixels, and keeps the draw-call count; turning it off restores the canvas pixel for pixel.
+    - Label modes: by default 4 region labels and no room, door, edge or anchor labels; selecting E-01 on the canvas shows its label with its name; Research shows all 19 room labels with grades, the two reported-door labels and the B37 label, no anchors; Structure hides grades and feature labels, keeps anchors hidden at the overview zoom, and shows anchors and edge labels after Focus.
+  - New `e2e/route.spec.ts` (J6, desktop and mobile):
+    - ENG-01 picked from the room index, then "Route to console": the hook reports B37, B22, B16, B05, B03 with rooms and kinds, `routeHighlight` names exactly those edges, and the step list and summary match. "Allow portal (B28)" reroutes through B28, shorter and without B37.
+    - From/To selectors: L-01 → S-01 (nine edges, B02 stairs fifth), its ten room labels visible in the default mode; Clear empties the route, the highlight and the step list.
+  - `e2e/selection.spec.ts` (J3) and `e2e/hero.spec.ts` now expect the five axes; J3 also checks the indicator and the source list.
+  - J1, J2, J4, J7, J8, `console.spec.ts` and `overview.spec.ts` are unchanged and pass.
+- **Visual baselines:** unchanged in Ex7 and passing. The overlay, routes and new labels are off by default, and `e2e/baseline.css` hides the label layer and now the research and route panels too.
+- **Performance:** `renderStats` in the desktop overview is still 1265 calls and 34,428 triangles (measured this session). The overlay adds no draw calls (J5); a shown route adds one tube.
+- **CI:** not observed running from this session (no GitHub Actions access here).
 
 ## Known incomplete work
 
+- **Routes.**
+  - The cost is the walk-line length of each edge only. The walk across a room between its two anchors is not counted, because the graph's nodes are rooms; a route can therefore prefer two far-apart doors of a big room.
+  - Inside a room the route line joins the arrival and departure anchors straight. That can pass through room furniture (the console's chord between B02 and B03) or across a void; walk lines inside corridors are exact.
+  - The tube is depth-tested, so walls the cut keeps hide it; it is not ghosted or cut by the visual state (it is clipped at the section only). Choosing a route does not frame the camera on it.
+- **Overlay.** Classes come from the mesh tags: a room's existence (presence) and an edge's provenance. Dimensions are never graded (all `normalized_authored`), and the info panel's indicator says so. Region tones return when the overlay is off.
+- **Labels.**
+  - Region labels still overlap in the overview ("POWER CORE" over the console's lower labels, "CONTROL NEXUS" over a reported-door label).
+  - Structure mode zoomed in is dense: anchor labels in the console and the corridor junctions overlap. There is no collision avoidance.
+  - The two feature labels (the reconfiguring B18 door, the B28 portal) belong to edges, so the default mode never shows them; they show in the Research mode as source notes.
 - **Cut geometry.**
   - The cut is a vertical plane through each owner's spine, facing the camera. Side walls are cut along their near half at oblique yaws, by design (a section through the room's centre line).
   - The section leaves cut solids open (no caps), so a clipped wall reads hollow at the cut. Stencil caps would be Ex8 polish.
   - The dither keeps 1/8 of pixels on cut walls and 1/4 on ghosts. The pattern is pixel-aligned and stable, but it reads as a fine grid; Ex8 may retune it.
 - **Occlusion that remains.** C-LAD and the B06 ladder are occluded in the default overview and exposed by the section (stop −8). The far (westward) leg of B37 lies behind the Eye chamber's far wall, which the cut keeps. Focusing ENG-01 or M-02 (B37's ends) keeps B37 solid and ghosts the chamber, which shows the leg (checked by eye); no test covers it.
-- **Labels.** Labels above the section are hidden and labels of ghosted owners dim. Progressive labels are still Ex7, and region labels still overlap in the overview ("POWER CORE" over the console's lower labels, "CONTROL NEXUS" over a reported-door label).
 - **Controls.**
   - Focus mode frames the room on entry, but does not restore the camera on exit.
   - Home resets only the camera; "Reset cutaway" resets only the visibility.
-  - On a 390-px toolbar, "Rooms" and "Cutaway" sit past the right edge until the row is scrolled (as "Rooms" did before).
+  - On a 390-px toolbar, "Rooms", "Cutaway", "Research" and "Route" sit past the right edge until the row is scrolled.
 - **Performance:** with the hero rooms, the overview draws 1265 calls and 34.4k triangles (`renderStats`, desktop), up from about 924 and 17.7k in Ex4.
   - Each non-instanced element is its own mesh plus an outline.
   - Hero repeats (shelves, books, orbs, rods, debris) are instanced.
-  - Merging and batching are Ex8 performance work. Merged meshes must keep one owner each (or carry per-vertex owners), because the cut's spine and every override are per owner.
+  - Merging and batching are Ex8 performance work. Merged meshes must keep one owner each (or carry per-vertex owners), because the cut's spine and every override (selection, overlay, route) are per owner.
 - Library ladders rise from the floor beside the galleries' inner railings. The railings are not broken where a ladder arrives; this is cosmetic.
 - Tier-2 doors are closed thresholds only (no Tier-2 rooms). The kit is axis-aligned only, so paths must use axis-aligned legs (tested).
-- Region tones and glow are greybox shades, not materials (Ex8) or evidence colours (Ex7). The visual state now owns every override, including the selection highlight and the glow's rest emissive.
+- Region tones and glow are greybox shades, not materials (Ex8). The visual state owns every override: the selection highlight, the glow's rest emissive, the overlay colours and the route tint.
 
 ## Next execution
 
-- **Ex7** (Provenance overlay, routes and labels, Medium).
-  - Info panel completion: all five evidence axes, graded records, resolved sources, a known-vs-inferred indicator and the configuration state.
-  - Research overlay through the visual state: `visual.setLayer('overlay', …)` colouring by `tag.evidenceClass` (portal distinct), plus a legend.
-  - Routes: Dijkstra by path length over the stable graph (portals excluded, with an "allow portal" toggle), "Route to console" in the panel, and from/to selectors.
-    - Highlight the route's connection meshes with `visual.setLayer('route', …)`.
-    - Draw a route line along `PrototypeScene.walkLines`.
-    - List the steps by connection type.
-  - Progressive labels, using `userData.labelOf` on every label.
-  - Extend `window.__tardis` with route state.
-  - E2E: J5 (overlay and legend), J6 (route to console from ENG-01, checking connection ids via the hook, and the step list), label modes, mobile.
+- **Ex8** (Visual language, lighting and performance, High). Geometry and topology are frozen.
+  - Procedural materials in the connective grammar (dark metallic ribs, hex and roundel motifs, blue/teal ambient, warm orange accents), distinct hero-room lighting, and two lighting layers (readability plus limited diegetic emissives), legible at isometric scale.
+    - Materials must stay `MeshStandardMaterial` (or extend `MaterialStates.addBase`), because the visual state patches and clones them for the cut, ghosts, the overlay colour and the tints.
+  - Instancing for repeated kit parts and static merging per room, keeping selection, overlay and route highlighting per owner (instance → owner mapping).
+  - Adaptive quality tiers with frame-time auto-downgrade, a dev-only stats overlay, and draw-call and triangle budgets exposed through the hook.
+  - E2E: a perf-budget spec on `renderer.info` at the overview, and every journey on both projects. Regenerate the four baselines intentionally, review each image, and note it in the handoff. Never assert FPS under SwiftShader.

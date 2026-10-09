@@ -9,6 +9,7 @@ import type { Vec3 } from '../data/layout';
 import { type Bounds, unionBounds } from '../scene/camera/isometric';
 import { buildPrimitive, MaterialCache } from './kit';
 import {
+  type AnchorPlacement,
   isMeshTag,
   type MeshPart,
   type RingPrimitive,
@@ -36,6 +37,8 @@ export interface BuiltStructure {
   readonly roomBounds: ReadonlyMap<string, Bounds>;
   /** Walk line (anchor to anchor) of each edge this structure builds; the cutaway's spines. */
   readonly walkLines: ReadonlyMap<string, readonly Vec3[]>;
+  /** Door anchors of its rooms, where they stand (structure-mode labels). */
+  readonly anchors: readonly AnchorPlacement[];
   /** Advances animated parts to `nowMs`; returns true when anything moved. */
   tick(nowMs: number): boolean;
 }
@@ -154,6 +157,7 @@ export function buildStructure(d: StructureDescription): {
       roomParts,
       roomBounds,
       walkLines: new Map(d.paths.map((p) => [p.connectionId, p.points])),
+      anchors: d.anchors,
     },
     spinners,
   };

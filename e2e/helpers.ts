@@ -1,6 +1,8 @@
 import { expect, type Locator, type Page } from '@playwright/test';
+import type { RouteSnapshot } from '../src/scene/testHook';
 import type { CameraState } from '../src/scene/viewer';
 import type { VisibilitySnapshot } from '../src/systems/visibility/manager';
+import type { ResearchSettings } from '../src/ui/researchPanel';
 
 export interface Point {
   readonly x: number;
@@ -94,9 +96,47 @@ export async function press(control: Locator, hasTouch: boolean): Promise<void> 
 
 /** Opens or closes the cutaway panel from the toolbar (Execution 6). */
 export async function setCutawayOpen(page: Page, open: boolean, hasTouch: boolean): Promise<void> {
-  const toggle = page.getByRole('button', { name: 'Cutaway', exact: true });
+  await setPanelOpen(page, 'Cutaway', open, hasTouch);
+}
+
+const PANEL_IDS = {
+  Cutaway: '#cutaway-panel',
+  Research: '#research-panel',
+  Route: '#route-panel',
+  Rooms: '#room-index',
+} as const;
+
+/** Opens or closes a toolbar panel (Executions 6 and 7). */
+export async function setPanelOpen(
+  page: Page,
+  name: keyof typeof PANEL_IDS,
+  open: boolean,
+  hasTouch: boolean,
+): Promise<void> {
+  const toggle = page.getByRole('button', { name, exact: true });
   if ((await toggle.getAttribute('aria-expanded')) !== String(open)) await press(toggle, hasTouch);
-  await expect(page.locator('#cutaway-panel')).toBeVisible({ visible: open });
+  await expect(page.locator(PANEL_IDS[name])).toBeVisible({ visible: open });
+}
+
+export async function route(page: Page): Promise<RouteSnapshot | null> {
+  return page.evaluate(() => {
+    if (!window.__tardis) throw new Error('window.__tardis missing');
+    return window.__tardis.route();
+  });
+}
+
+export async function routeHighlight(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    if (!window.__tardis) throw new Error('window.__tardis missing');
+    return window.__tardis.routeHighlight();
+  });
+}
+
+export async function research(page: Page): Promise<ResearchSettings> {
+  return page.evaluate(() => {
+    if (!window.__tardis) throw new Error('window.__tardis missing');
+    return window.__tardis.research();
+  });
 }
 
 /** Double-click, or two quick taps on touch projects. */
