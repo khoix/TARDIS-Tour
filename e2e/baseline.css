@@ -1,6 +1,7 @@
 /* Visual baselines compare geometry only: hide DOM overlays whose fonts vary by machine. */
 .label-layer,
 #room-index,
+#cutaway-panel,
 #info-panel {
   visibility: hidden !important;
 }

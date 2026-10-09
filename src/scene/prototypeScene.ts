@@ -13,11 +13,10 @@ import {
   Mesh,
   MeshStandardMaterial,
 } from 'three';
-import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
-import type { RoomTransform } from '../data/layout';
+import type { RoomTransform, Vec3 } from '../data/layout';
 import type { Connection, RegionId, RoomNode } from '../data/types';
 import { REGION_LABELS } from '../ui/roomIndex';
-import type { BuiltDressing, BuiltStructure } from '../world/build';
+import { type BuiltDressing, type BuiltStructure, label } from '../world/build';
 import {
   evidenceClassOfPresence,
   evidenceClassOfProvenance,
@@ -40,13 +39,14 @@ export const REGION_COLORS: Readonly<Record<RegionId, number>> = {
 const CONNECTOR_COLOR = 0x9fb7bd;
 const PORTAL_COLOR = 0xc04fd8;
 const CONNECTOR_THICKNESS_NU = 0.8;
-export const SELECTED_EMISSIVE = 0xe8913a;
 
 export interface PrototypeScene {
   readonly root: Group;
   /** Pickable meshes (`userData.kind === 'room'`) of each placed room. */
   readonly roomParts: ReadonlyMap<string, readonly Mesh[]>;
   readonly roomBounds: ReadonlyMap<string, Bounds>;
+  /** Walk lines of the edges built as structure (the cutaway's spines for edge meshes). */
+  readonly walkLines: ReadonlyMap<string, readonly Vec3[]>;
   readonly regionBounds: ReadonlyMap<RegionId, Bounds>;
   readonly overview: Bounds;
   /** Advances animated structures; returns true when the frame needs re-rendering. */
@@ -57,13 +57,6 @@ export interface PrototypeScene {
    * dressing stays inside each room's volumes. Returns the meshes added.
    */
   attach(dressing: BuiltDressing): readonly Mesh[];
-}
-
-function label(text: string, className: string): CSS2DObject {
-  const el = document.createElement('div');
-  el.className = className;
-  el.textContent = text;
-  return new CSS2DObject(el);
 }
 
 export function buildPrototypeScene(
@@ -119,7 +112,7 @@ export function buildPrototypeScene(
     );
     outline.raycast = () => undefined;
     mesh.add(outline);
-    const tag = label(room.id, 'room-label');
+    const tag = label(room.id, 'room-label', { kind: 'room', id: room.id });
     tag.position.set(0, h / 2 + 0.5, 0);
     mesh.add(tag);
     root.add(mesh);
@@ -178,7 +171,7 @@ export function buildPrototypeScene(
   for (const [region, list] of byRegion) {
     const rb = unionBounds(list);
     regionBounds.set(region, rb);
-    const tag = label(REGION_LABELS[region], 'region-label');
+    const tag = label(REGION_LABELS[region], 'region-label', { kind: 'region', id: region });
     const c = boundsCenter(rb);
     tag.position.set(c[0], rb.max[1] + 3, c[2]);
     root.add(tag);
@@ -188,6 +181,7 @@ export function buildPrototypeScene(
     root,
     roomParts,
     roomBounds: boundsById,
+    walkLines: new Map(structures.flatMap((s) => [...s.walkLines])),
     regionBounds,
     overview: unionBounds([...boundsById.values()]),
     tick(nowMs) {

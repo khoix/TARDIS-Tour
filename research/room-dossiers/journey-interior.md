@@ -78,7 +78,7 @@ Execution 4 builds this reconstruction as a connected greybox, and Execution 5 m
 | E-V    | A portal to the engine, explicit in dialogue (~37:48) [S41, S05]                                      | The vestibule (Ex4). The portal marking (a violet glowing frame, floor chevrons and the label "B28 portal · non-Euclidean, never walked") belongs to edge B28, so it is tagged to B28, not to E-V.                                                        |
 | ENG-01 | An explosion frozen in time (~38:23) [S05, S41, S23]                                                  | Fireball size and depth, 72 fragments on a deterministic burst, the shock ring, and the engine housing and struts the burst rises from.                                                                                                                   |
 
-Glowing parts (orbs, the Eye, the fireball, rods and the portal marking) are self-lit greybox shades, not final materials (Ex8). In the default region framing, the Eye core and the frozen explosion lie below the top of their chambers' full-height walls. The Ex6 cutaway exposes them.
+Glowing parts (orbs, the Eye, the fireball, rods and the portal marking) are self-lit greybox shades, not final materials (Ex8). They lie below the top of their chambers' full-height walls; since Ex6 the default camera-facing wall cut exposes them in the overview and region framings (the `power-core-region` baseline shows both).
 
 ## Evidence grades
 

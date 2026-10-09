@@ -1,15 +1,28 @@
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import { PLACED_ROOMS } from '../src/data/rooms';
-import { camera, openApp, pointOf, selection, tap, waitHero, waitIdle } from './helpers';
+import {
+  camera,
+  openApp,
+  pointOf,
+  press,
+  selection,
+  setCutawayOpen,
+  tap,
+  visibility,
+  waitHero,
+  waitIdle,
+} from './helpers';
 
 /**
- * Placed rooms with no exposed canvas pixel in the default overview, and why. They are
- * selected from the room index until the cutaway system (Execution 6) exposes them; its
- * elevation clip must make each one clickable on the canvas.
+ * Placed rooms with no exposed canvas pixel in the default overview, why, and the section
+ * height of the cutaway's elevation clip (Execution 6) that exposes each on the canvas.
  */
-const HIDDEN_IN_OVERVIEW: Readonly<Record<string, string>> = {
-  'C-LAD': 'ladder compartment under the lower deck, beneath the console',
+const HIDDEN_IN_OVERVIEW: Readonly<Record<string, { reason: string; sectionY: number }>> = {
+  'C-LAD': {
+    reason: 'ladder compartment under the lower deck, beneath the console',
+    sectionY: -8,
+  },
 };
 
 test('every placed Tier-1 room is selectable on the canvas from the overview', async ({
@@ -32,17 +45,33 @@ test('every placed Tier-1 room is selectable on the canvas from the overview', a
   for (let i = 0; i < 3; i++) expect(after.target[i]).toBeCloseTo(home.target[i] as number, 6);
 });
 
-test('rooms hidden in the overview are occluded on the canvas and selectable from the index', async ({
+test('J7: rooms hidden in the overview are selectable on the canvas under the section clip', async ({
   page,
+  hasTouch,
 }) => {
   await openApp(page);
-  for (const id of Object.keys(HIDDEN_IN_OVERVIEW)) {
+  for (const [id, { sectionY }] of Object.entries(HIDDEN_IN_OVERVIEW)) {
     const point = await page.evaluate((r) => window.__tardis?.screenPointOf(r) ?? null, id);
     expect(point, `${id} became visible: move it to the canvas test`).toBeNull();
-    const toggle = page.getByRole('button', { name: 'Rooms' });
-    if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
-    await page.locator(`#room-index button[data-room-id="${id}"]`).click();
+    // Step the section down level by level until it exposes the room.
+    await setCutawayOpen(page, true, hasTouch);
+    const lower = page.getByRole('button', { name: 'Lower section' });
+    while (((await visibility(page)).sectionY ?? Infinity) > sectionY) {
+      await expect(lower).toBeEnabled();
+      await press(lower, hasTouch);
+    }
+    expect((await visibility(page)).sectionY).toBe(sectionY);
+    await setCutawayOpen(page, false, hasTouch);
+    await tap(page, await pointOf(page, id), hasTouch);
     await expect.poll(() => selection(page)).toBe(id);
+    // Back to the default view: the room is occluded again.
+    await page.evaluate(() => window.__tardis?.select(null));
+    await setCutawayOpen(page, true, hasTouch);
+    await press(page.getByRole('button', { name: 'Reset cutaway' }), hasTouch);
+    await setCutawayOpen(page, false, hasTouch);
+    await expect
+      .poll(() => page.evaluate((r) => window.__tardis?.screenPointOf(r) ?? null, id))
+      .toBeNull();
   }
 });
 

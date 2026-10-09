@@ -5,6 +5,7 @@
 
 import { type Object3D, Group, Mesh } from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
+import type { Vec3 } from '../data/layout';
 import { type Bounds, unionBounds } from '../scene/camera/isometric';
 import { buildPrimitive, MaterialCache } from './kit';
 import {
@@ -18,7 +19,8 @@ import { volumeBounds } from './validate/geometry';
 
 /**
  * Parts built but not shown in the default map view, so interiors read from above
- * (EXECUTION-PLAN Ex4). They stay in the scene graph; the cutaway system (Ex6) toggles them.
+ * (EXECUTION-PLAN Ex4). They stay in the scene graph; the cutaway's "Hide ceilings" setting
+ * (src/systems/visibility) owns their visibility once the visual state takes the scene over.
  */
 export const HIDDEN_BY_DEFAULT: ReadonlySet<MeshPart> = new Set<MeshPart>(['ceiling']);
 
@@ -32,6 +34,8 @@ export interface BuiltStructure {
   readonly roomParts: ReadonlyMap<string, readonly Mesh[]>;
   /** Union of each room's volumes; used for focus and screen-point sampling. */
   readonly roomBounds: ReadonlyMap<string, Bounds>;
+  /** Walk line (anchor to anchor) of each edge this structure builds; the cutaway's spines. */
+  readonly walkLines: ReadonlyMap<string, readonly Vec3[]>;
   /** Advances animated parts to `nowMs`; returns true when anything moved. */
   tick(nowMs: number): boolean;
 }
@@ -41,11 +45,22 @@ export interface Spinner {
   readonly primitive: RingPrimitive;
 }
 
-function label(text: string, className: string): CSS2DObject {
+/**
+ * What a label names, in `userData.labelOf`: the visibility system hides labels above the
+ * section clip and dims those of ghosted owners.
+ */
+export interface LabelOwner {
+  readonly kind: 'room' | 'connection' | 'region';
+  readonly id: string;
+}
+
+export function label(text: string, className: string, owner: LabelOwner): CSS2DObject {
   const el = document.createElement('div');
   el.className = className;
   el.textContent = text;
-  return new CSS2DObject(el);
+  const object = new CSS2DObject(el);
+  object.userData.labelOf = owner;
+  return object;
 }
 
 /**
@@ -71,6 +86,7 @@ function elementLabel(element: StructureElement, text: string): CSS2DObject {
       : tag.kind === 'connection'
         ? 'edge-label'
         : 'door-label',
+    { kind: tag.kind, id: tag.id },
   );
   object.position.set(...at);
   return object;
@@ -97,7 +113,7 @@ function buildElements(d: StructureDescription): {
     if (element.label !== undefined) root.add(elementLabel(element, element.label));
   }
   for (const l of d.labels) {
-    const tag = label(l.roomId, 'room-label');
+    const tag = label(l.roomId, 'room-label', { kind: 'room', id: l.roomId });
     tag.position.set(...l.position);
     root.add(tag);
   }
@@ -137,6 +153,7 @@ export function buildStructure(d: StructureDescription): {
       connectionIds: new Set(d.paths.map((p) => p.connectionId)),
       roomParts,
       roomBounds,
+      walkLines: new Map(d.paths.map((p) => [p.connectionId, p.points])),
     },
     spinners,
   };

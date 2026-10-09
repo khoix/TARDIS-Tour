@@ -1,5 +1,6 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import type { CameraState } from '../src/scene/viewer';
+import type { VisibilitySnapshot } from '../src/systems/visibility/manager';
 
 export interface Point {
   readonly x: number;
@@ -45,6 +46,20 @@ export async function visibleRooms(page: Page): Promise<string[]> {
   });
 }
 
+export async function pickableRooms(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    if (!window.__tardis) throw new Error('window.__tardis missing');
+    return window.__tardis.pickableRooms();
+  });
+}
+
+export async function visibility(page: Page): Promise<VisibilitySnapshot> {
+  return page.evaluate(() => {
+    if (!window.__tardis) throw new Error('window.__tardis missing');
+    return window.__tardis.visibility();
+  });
+}
+
 export async function renderStats(
   page: Page,
 ): Promise<{ frames: number; calls: number; triangles: number }> {
@@ -69,6 +84,19 @@ export async function pointOf(page: Page, id: string): Promise<Point> {
 export async function tap(page: Page, p: Point, hasTouch: boolean): Promise<void> {
   if (hasTouch) await page.touchscreen.tap(p.x, p.y);
   else await page.mouse.click(p.x, p.y);
+}
+
+/** Activates a DOM control with a tap on touch projects, or a click. */
+export async function press(control: Locator, hasTouch: boolean): Promise<void> {
+  if (hasTouch) await control.tap();
+  else await control.click();
+}
+
+/** Opens or closes the cutaway panel from the toolbar (Execution 6). */
+export async function setCutawayOpen(page: Page, open: boolean, hasTouch: boolean): Promise<void> {
+  const toggle = page.getByRole('button', { name: 'Cutaway', exact: true });
+  if ((await toggle.getAttribute('aria-expanded')) !== String(open)) await press(toggle, hasTouch);
+  await expect(page.locator('#cutaway-panel')).toBeVisible({ visible: open });
 }
 
 /** Double-click, or two quick taps on touch projects. */

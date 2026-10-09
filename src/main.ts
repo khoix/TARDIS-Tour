@@ -4,8 +4,10 @@ import { getRoom, ROOMS } from './data/rooms';
 import { buildPrototypeScene } from './scene/prototypeScene';
 import { installTestHook, testHookEnabled } from './scene/testHook';
 import { createViewer } from './scene/viewer';
+import { VisualState } from './systems/visibility/manager';
 import { buildConsoleRoom } from './world/rooms/console/build';
 import { buildSkeleton } from './world/skeleton';
+import { renderCutawayPanel } from './ui/cutawayPanel';
 import { renderInfoPanel } from './ui/infoPanel';
 import { groupPlacedRooms, renderRoomIndex, setIndexSelection } from './ui/roomIndex';
 import './style.css';
@@ -21,20 +23,35 @@ const indexContainer = required<HTMLElement>('#room-index');
 const infoPanel = required<HTMLElement>('#info-panel');
 const regionButtons = required<HTMLElement>('#region-buttons');
 const toggleIndex = required<HTMLButtonElement>('#toggle-index');
+const cutawayContainer = required<HTMLElement>('#cutaway-panel');
+const toggleCutaway = required<HTMLButtonElement>('#toggle-cutaway');
 
-const viewer = createViewer(
-  viewport,
-  buildPrototypeScene(ROOMS, V1_CONNECTIONS, LAYOUT, [buildConsoleRoom(), buildSkeleton()]),
-);
+const world = buildPrototypeScene(ROOMS, V1_CONNECTIONS, LAYOUT, [
+  buildConsoleRoom(),
+  buildSkeleton(),
+]);
+const visual = new VisualState(world, ROOMS, V1_CONNECTIONS);
+const viewer = createViewer(viewport, world, visual);
 const compact = window.matchMedia('(max-width: 720px)');
 
 function setIndexOpen(open: boolean) {
   indexContainer.hidden = !open;
   toggleIndex.setAttribute('aria-expanded', String(open));
+  // On narrow screens the two top panels would overlap: one at a time.
+  if (open && compact.matches) setCutawayOpen(false);
+}
+function setCutawayOpen(open: boolean) {
+  cutawayContainer.hidden = !open;
+  toggleCutaway.setAttribute('aria-expanded', String(open));
+  if (open && compact.matches) setIndexOpen(false);
 }
 setIndexOpen(!compact.matches);
+setCutawayOpen(false);
 toggleIndex.addEventListener('click', () =>
   setIndexOpen(toggleIndex.getAttribute('aria-expanded') !== 'true'),
+);
+toggleCutaway.addEventListener('click', () =>
+  setCutawayOpen(toggleCutaway.getAttribute('aria-expanded') !== 'true'),
 );
 
 const indexNav = renderRoomIndex(indexContainer, ROOMS, (id) => {
@@ -49,6 +66,28 @@ viewer.onSelectionChange((id) => {
     onClose: () => viewer.select(null),
   });
 });
+
+const cutaway = renderCutawayPanel(
+  cutawayContainer,
+  {
+    regions: groupPlacedRooms(ROOMS).map((g) => g.region),
+    levels: visual.levels,
+    sectionRange: visual.sectionRange,
+    sectionStops: visual.sectionStops,
+  },
+  {
+    onChange: (patch) => {
+      visual.update(patch);
+      // Entering focus mode also frames the room it cuts open.
+      const id = viewer.selection();
+      if (patch.focusMode && id !== null) viewer.focusRoom(id);
+    },
+    onReset: () => visual.reset(),
+  },
+);
+const syncCutaway = () => cutaway.sync(visual.settings(), viewer.selection() !== null);
+visual.onChange(syncCutaway);
+syncCutaway();
 
 for (const group of groupPlacedRooms(ROOMS)) {
   const button = document.createElement('button');

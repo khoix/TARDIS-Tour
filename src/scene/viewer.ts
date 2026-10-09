@@ -1,14 +1,13 @@
 /**
  * Isometric viewer: renderer, orthographic camera, orbit/pan/zoom controls, raycast
- * selection, tap/double-tap focus and on-demand rendering.
+ * selection, tap/double-tap focus and on-demand rendering. What meshes look like, and which
+ * hits count, is the visual-state manager's (src/systems/visibility).
  */
 
 import {
   Color,
   DirectionalLight,
   HemisphereLight,
-  type Mesh,
-  type MeshStandardMaterial,
   OrthographicCamera,
   Raycaster,
   Scene,
@@ -31,10 +30,11 @@ import {
   MIN_ZOOM,
   orthoFrustum,
 } from './camera/isometric';
+import { horizontalView, Throttle, VIEW_THROTTLE_MS } from '../systems/visibility/cutaway';
+import type { VisualState } from '../systems/visibility/manager';
 import type { BuiltDressing } from '../world/build';
-import { restEmissive } from '../world/kit';
 import type { MeshTag } from '../world/structure';
-import { type PrototypeScene, SELECTED_EMISSIVE } from './prototypeScene';
+import type { PrototypeScene } from './prototypeScene';
 
 /** Pointer travel (CSS px) below which a press counts as a tap rather than a drag. */
 const TAP_SLOP_PX = 6;
@@ -61,18 +61,24 @@ export interface CameraState {
 
 export interface Viewer {
   readonly canvas: HTMLCanvasElement;
+  /** Cutaway, isolation, selection and (Ex7) overlay/route layers of every world mesh. */
+  readonly visual: VisualState;
   select(id: string | null): void;
   selection(): string | null;
   focusRoom(id: string): void;
   focusRegion(region: RegionId): void;
   resetView(): void;
   cameraState(): CameraState;
+  /** True while a camera transition runs or the wall cut has yet to follow the camera. */
   isAnimating(): boolean;
   /** Room whose mesh a click at this client-space point would hit first, if any. */
   roomAt(clientX: number, clientY: number): string | null;
   /** Client-space point where a canvas click hits `id` first, or null if none is exposed. */
   screenPointOf(id: string): { x: number; y: number } | null;
+  /** Rooms with drawn geometry (ghosts count) below the section. */
   visibleRooms(): string[];
+  /** Rooms that may take a click: not hidden, ghosted or wholly above the section. */
+  pickableRooms(): string[];
   renderStats(): { frames: number; calls: number; triangles: number };
   onSelectionChange(listener: (id: string | null) => void): void;
   /** Resolves once the first frame has rendered. */
@@ -91,7 +97,11 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 }
 
-export function createViewer(host: HTMLElement, world: PrototypeScene): Viewer {
+export function createViewer(
+  host: HTMLElement,
+  world: PrototypeScene,
+  visual: VisualState,
+): Viewer {
   const renderer = new WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setClearColor(new Color(0x0b1418));
@@ -135,11 +145,25 @@ export function createViewer(host: HTMLElement, world: PrototypeScene): Viewer {
   });
   const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
   const raycaster = new Raycaster();
+  // The camera-facing wall cut follows the camera at most every VIEW_THROTTLE_MS.
+  const viewThrottle = new Throttle(VIEW_THROTTLE_MS);
+  let viewPending = false;
 
   const requestRender = () => {
     needsRender = true;
   };
-  controls.addEventListener('change', requestRender);
+  controls.addEventListener('change', () => {
+    viewPending = true;
+    requestRender();
+  });
+  visual.onChange(requestRender);
+
+  function updateView() {
+    const offset = camera.position.clone().sub(controls.target);
+    visual.setView(horizontalView(toVec3(offset)));
+    viewPending = false;
+    requestRender();
+  }
 
   function currentPose(): CameraPose {
     const offset = camera.position.clone().sub(controls.target);
@@ -192,27 +216,15 @@ export function createViewer(host: HTMLElement, world: PrototypeScene): Viewer {
       -((clientY - rect.top) / rect.height) * 2 + 1,
     );
     raycaster.setFromCamera(ndc, camera);
-    const hit = raycaster.intersectObjects(pickables, false).find((h) => h.object.visible);
+    const hit = visual.pick(raycaster.intersectObjects(pickables, false));
     return hit ? (hit.object.userData as MeshTag).id : null;
-  }
-
-  function setHighlight(id: string | null, on: boolean) {
-    if (id === null) return;
-    const parts = (world.roomParts.get(id) ?? []) as readonly Mesh<never, MeshStandardMaterial>[];
-    for (const mesh of parts) {
-      const rest = restEmissive(mesh.material);
-      mesh.material.emissive.setHex(on ? SELECTED_EMISSIVE : rest.color);
-      mesh.material.emissiveIntensity = on ? 0.55 : rest.intensity;
-    }
   }
 
   function select(id: string | null) {
     if (id !== null && !world.roomParts.has(id)) throw new Error(`Unknown room ${id}`);
     if (id === selected) return;
-    setHighlight(selected, false);
     selected = id;
-    setHighlight(selected, true);
-    requestRender();
+    visual.setSelection(selected);
     for (const listener of listeners) listener(selected);
   }
 
@@ -264,6 +276,7 @@ export function createViewer(host: HTMLElement, world: PrototypeScene): Viewer {
   new ResizeObserver(resize).observe(host);
   resize();
   applyPose(overviewPose());
+  updateView();
 
   function loop(now: number) {
     // Ambient motion (rotor rings) pauses entirely under prefers-reduced-motion, and while
@@ -279,6 +292,7 @@ export function createViewer(host: HTMLElement, world: PrototypeScene): Viewer {
       applyPose(lerpPose(animation.from, animation.to, eased));
       if (t >= 1) animation = null;
     }
+    if (viewPending && viewThrottle.ready(now)) updateView();
     if (needsRender) {
       needsRender = false;
       renderer.render(scene, camera);
@@ -292,6 +306,7 @@ export function createViewer(host: HTMLElement, world: PrototypeScene): Viewer {
 
   return {
     canvas,
+    visual,
     select,
     selection: () => selected,
     focusRoom,
@@ -313,19 +328,20 @@ export function createViewer(host: HTMLElement, world: PrototypeScene): Viewer {
         pitchDeg: pose.pitchDeg,
       };
     },
-    isAnimating: () => animation !== null,
+    isAnimating: () => animation !== null || viewPending,
     roomAt: pickAt,
     screenPointOf(id) {
-      const parts = world.roomParts.get(id);
       const b = world.roomBounds.get(id);
-      if (!parts?.some((m) => m.visible) || !b) return null;
+      if (!b || !visual.roomPickable(id)) return null;
+      // Sample only what lies below the section clip.
+      const top = Math.min(b.max[1], visual.settings().sectionY ?? Infinity);
       const rect = canvas.getBoundingClientRect();
       let minX = Infinity;
       let minY = Infinity;
       let maxX = -Infinity;
       let maxY = -Infinity;
       for (const x of [b.min[0], b.max[0]]) {
-        for (const y of [b.min[1], b.max[1]]) {
+        for (const y of [b.min[1], top]) {
           for (const z of [b.min[2], b.max[2]]) {
             const p = new Vector3(x, y, z).project(camera);
             const sx = rect.left + ((p.x + 1) / 2) * rect.width;
@@ -360,8 +376,8 @@ export function createViewer(host: HTMLElement, world: PrototypeScene): Viewer {
       }
       return null;
     },
-    visibleRooms: () =>
-      [...world.roomParts].filter(([, parts]) => parts.some((m) => m.visible)).map(([id]) => id),
+    visibleRooms: () => [...world.roomParts.keys()].filter((id) => visual.roomVisible(id)),
+    pickableRooms: () => [...world.roomParts.keys()].filter((id) => visual.roomPickable(id)),
     renderStats: () => ({
       frames,
       calls: renderer.info.render.calls,
@@ -373,7 +389,7 @@ export function createViewer(host: HTMLElement, world: PrototypeScene): Viewer {
     firstFrame: () => firstFrame,
     addDressing(dressing) {
       pickables.push(...world.attach(dressing));
-      setHighlight(selected, true);
+      visual.register(dressing.root);
       dressings++;
       requestRender();
     },

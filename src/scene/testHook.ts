@@ -5,6 +5,7 @@
  */
 
 import type { RegionId } from '../data/types';
+import type { VisibilitySnapshot } from '../systems/visibility/manager';
 import type { CameraState, Viewer } from './viewer';
 
 export interface TardisTestHook {
@@ -13,13 +14,17 @@ export interface TardisTestHook {
   /** True once the lazily loaded hero rooms (Execution 5) are in the scene. */
   readonly heroReady: boolean;
   camera(): CameraState;
-  /** True while a focus/reset camera transition is running. */
+  /** True while a focus/reset camera transition runs or the wall cut has yet to follow it. */
   animating(): boolean;
   screenPointOf(id: string): { x: number; y: number } | null;
   /** Room a click at this client-space point would select, or null for empty space. */
   roomAt(x: number, y: number): string | null;
   selection(): string | null;
   visibleRooms(): string[];
+  /** Rooms a click can select: not hidden, ghosted or wholly above the section (Execution 6). */
+  pickableRooms(): string[];
+  /** Cutaway settings, focus-mode room, isolated rooms and the cut's camera direction. */
+  visibility(): VisibilitySnapshot;
   renderStats(): { frames: number; calls: number; triangles: number };
   select(id: string | null): void;
   focusRoom(id: string): void;
@@ -51,6 +56,8 @@ export function installTestHook(viewer: Viewer): TardisTestHook {
     roomAt: (x, y) => viewer.roomAt(x, y),
     selection: () => viewer.selection(),
     visibleRooms: () => viewer.visibleRooms(),
+    pickableRooms: () => viewer.pickableRooms(),
+    visibility: () => viewer.visual.snapshot(),
     renderStats: () => viewer.renderStats(),
     select: (id) => viewer.select(id),
     focusRoom: (id) => viewer.focusRoom(id),
