@@ -18,9 +18,14 @@ import { buildPrototypeScene } from '../../../src/scene/prototypeScene';
 import { horizontalView } from '../../../src/systems/visibility/cutaway';
 import { VisualState } from '../../../src/systems/visibility/manager';
 import { tardisUniforms } from '../../../src/systems/visibility/materials';
-import { CUT_PARTS, GHOST_KEEP, SELECTED_TINT } from '../../../src/systems/visibility/state';
+import {
+  CUT_PARTS,
+  DETAIL_PARTS,
+  GHOST_KEEP,
+  SELECTED_TINT,
+} from '../../../src/systems/visibility/state';
 import type { LabelOwner } from '../../../src/world/build';
-import { restEmissive } from '../../../src/world/kit';
+import { GLOW_INTENSITY, restEmissive } from '../../../src/world/kit';
 import { buildConsoleRoom } from '../../../src/world/rooms/console/build';
 import { buildHeroRooms } from '../../../src/world/rooms/hero/heroRooms';
 import { buildSkeleton } from '../../../src/world/skeleton';
@@ -121,7 +126,10 @@ describe('visual-state manager', () => {
       expect(m.material, m.name).toBe(before.get(m));
       const rest = restEmissive(material(m));
       expect(material(m).emissive.getHex(), m.name).toBe(rest.color);
-      expect(rest.color !== 0, m.name).toBe(GLOW_PARTS.has(tagOf(m).part));
+      // Only glow parts are self-lit; accents (Execution 8) stay faint.
+      expect(rest.color !== 0 && rest.intensity >= GLOW_INTENSITY, m.name).toBe(
+        GLOW_PARTS.has(tagOf(m).part),
+      );
     }
     // Variants are cached: selecting again reuses the same materials.
     visual.setSelection('E-01');
@@ -287,5 +295,28 @@ describe('Execution 7 layer slots', () => {
     }
     visual.setLayer('route', null);
     expect(visual.layerTargets('route')).toEqual([]);
+  });
+
+  it('reduced detail hides detail parts outside the selection; every mesh casts only solid shadows', () => {
+    const { world, visual } = setup();
+    const meshes = tagged(world.root);
+    for (const m of meshes) {
+      expect(m.castShadow && m.receiveShadow, m.name).toBe(true);
+      expect(tardisUniforms(m.customDepthMaterial as Material).cut, m.name).toBe(
+        CUT_PARTS.has(tagOf(m).part) ? 1 : 0,
+      );
+    }
+    expect(visual.detail()).toBe('full');
+    visual.setDetail('reduced');
+    visual.setSelection('ENG-01');
+    const detail = meshes.filter((m) => DETAIL_PARTS.has(tagOf(m).part));
+    expect(detail.some((m) => tagOf(m).id === 'ENG-01')).toBe(true);
+    for (const m of meshes) {
+      const t = tagOf(m);
+      const gone = DETAIL_PARTS.has(t.part) && !(t.kind === 'room' && t.id === 'ENG-01');
+      expect(visual.resolved(m)?.hidden, m.name).toBe(gone || t.part === 'ceiling');
+    }
+    visual.setDetail('full');
+    for (const m of detail) expect(m.visible, m.name).toBe(true);
   });
 });

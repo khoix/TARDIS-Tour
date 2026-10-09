@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import type { RouteSnapshot } from '../src/scene/testHook';
-import type { CameraState } from '../src/scene/viewer';
+import type { BudgetReport, CameraState, QualitySnapshot } from '../src/scene/viewer';
+import type { QualityTier } from '../src/systems/quality/tiers';
 import type { VisibilitySnapshot } from '../src/systems/visibility/manager';
 import type { ResearchSettings } from '../src/ui/researchPanel';
 
@@ -203,4 +204,29 @@ export async function emptyPoint(page: Page): Promise<Point> {
   });
   expect(point, 'no empty canvas point').not.toBeNull();
   return point as Point;
+}
+
+export async function quality(page: Page): Promise<QualitySnapshot> {
+  return page.evaluate(() => {
+    if (!window.__tardis) throw new Error('window.__tardis missing');
+    return window.__tardis.quality();
+  });
+}
+
+export async function budget(page: Page): Promise<BudgetReport> {
+  return page.evaluate(() => {
+    if (!window.__tardis) throw new Error('window.__tardis missing');
+    return window.__tardis.budget();
+  });
+}
+
+/** Pins a tier and waits for a frame rendered with it. */
+export async function setQuality(page: Page, tier: QualityTier): Promise<void> {
+  const frames = await page.evaluate((t) => {
+    if (!window.__tardis) throw new Error('window.__tardis missing');
+    const before = window.__tardis.renderStats().frames;
+    window.__tardis.setQuality(t);
+    return before;
+  }, tier);
+  await page.waitForFunction((f) => (window.__tardis?.renderStats().frames ?? 0) > f, frames);
 }

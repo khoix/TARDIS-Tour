@@ -6,9 +6,8 @@
 
 import {
   Color,
-  DirectionalLight,
-  HemisphereLight,
   OrthographicCamera,
+  PCFShadowMap,
   Raycaster,
   Scene,
   Vector2,
@@ -33,6 +32,16 @@ import {
 import { horizontalView, Throttle, VIEW_THROTTLE_MS } from '../systems/visibility/cutaway';
 import { applyLabelZoom } from '../systems/labels/labels';
 import type { VisualState } from '../systems/visibility/manager';
+import {
+  FrameTimeMonitor,
+  lowerTier,
+  pixelRatioFor,
+  QUALITY,
+  type QualitySettings,
+  type QualityTier,
+  type RenderBudget,
+} from '../systems/quality/tiers';
+import { createLighting, type LightSpec } from './lighting';
 import type { BuiltDressing } from '../world/build';
 import type { MeshTag } from '../world/structure';
 import type { PrototypeScene } from './prototypeScene';
@@ -58,6 +67,37 @@ export interface CameraState {
   readonly zoom: number;
   readonly yawDeg: number;
   readonly pitchDeg: number;
+}
+
+/** Quality tier in force and what it draws (Execution 8). */
+export interface QualitySnapshot {
+  readonly tier: QualityTier;
+  /** Whether sustained slow frames may still step the tier down. */
+  readonly auto: boolean;
+  readonly pixelRatio: number;
+  readonly shadows: boolean;
+  /** Diegetic lights shining (on for the tier and not dimmed by the overlay). */
+  readonly diegeticLights: number;
+  readonly detail: QualitySettings['detail'];
+  readonly ambientMotion: boolean;
+  /** Smoothed interval (ms) between back-to-back rendered frames; null before any. */
+  readonly frameMs: number | null;
+  /** Times the frame-time monitor has stepped the tier down. */
+  readonly downgrades: number;
+}
+
+/** Draw calls and triangles of the last frame against the tier's budget. */
+export interface BudgetReport extends RenderBudget {
+  readonly tier: QualityTier;
+  readonly budget: RenderBudget;
+  readonly withinBudget: boolean;
+}
+
+export interface ViewerOptions {
+  /** Diegetic lights (src/scene/lighting.ts), in priority order. */
+  readonly lights?: readonly LightSpec[];
+  /** Starting tier, and whether slow frames may step it down. */
+  readonly quality?: { readonly tier: QualityTier; readonly auto: boolean };
 }
 
 export interface Viewer {
@@ -90,6 +130,13 @@ export interface Viewer {
   addDressing(dressing: BuiltDressing): void;
   /** Number of dressings added so far. */
   dressings(): number;
+  quality(): QualitySnapshot;
+  /** Applies a tier; a tier set this way is pinned (no further auto-downgrade). */
+  setQuality(tier: QualityTier): void;
+  /** Draw calls and triangles of the last frame against the tier's budget. */
+  budget(): BudgetReport;
+  /** Darkens the diegetic lights (the evidence overlay reads in readability light only). */
+  setDiegeticDimmed(dimmed: boolean): void;
 }
 
 function toVec3(v: Vector3): Vec3 {
@@ -104,10 +151,11 @@ export function createViewer(
   host: HTMLElement,
   world: PrototypeScene,
   visual: VisualState,
+  options: ViewerOptions = {},
 ): Viewer {
   const renderer = new WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setClearColor(new Color(0x0b1418));
+  renderer.shadowMap.type = PCFShadowMap;
   // The route line clips itself at the section height with a material clipping plane.
   renderer.localClippingEnabled = true;
   const canvas = renderer.domElement;
@@ -120,10 +168,7 @@ export function createViewer(
   host.append(labels.domElement);
 
   const scene = new Scene();
-  scene.add(new HemisphereLight(0xcfe6ff, 0x1b2226, 1.6));
-  const key = new DirectionalLight(0xffffff, 1.4);
-  key.position.set(40, 80, 60);
-  scene.add(key);
+  const lighting = createLighting(scene, world.overview, options.lights ?? []);
   scene.add(world.root);
 
   const camera = new OrthographicCamera(-1, 1, 1, -1, 1, CAMERA_DISTANCE_NU * 2.5);
@@ -141,6 +186,13 @@ export function createViewer(
   let lastAmbient = -Infinity;
   let labelZoom = NaN;
   let animation: { from: CameraPose; to: CameraPose; start: number } | null = null;
+  let settings: QualitySettings = QUALITY[options.quality?.tier ?? 'high'];
+  let autoQuality = options.quality?.auto ?? false;
+  let diegeticDimmed = false;
+  let downgrades = 0;
+  const monitor = new FrameTimeMonitor();
+  let lastRenderedAt = -Infinity;
+  let lastFrameRendered = false;
   let selected: string | null = null;
   const listeners: ((id: string | null) => void)[] = [];
   const pickables = [...world.roomParts.values()].flat();
@@ -209,6 +261,17 @@ export function createViewer(
     renderer.setSize(width, height);
     labels.setSize(width, height);
     requestRender();
+  }
+
+  function applyQuality(next: QualitySettings) {
+    settings = next;
+    renderer.setPixelRatio(pixelRatioFor(next.tier, window.devicePixelRatio));
+    renderer.shadowMap.enabled = next.shadows;
+    lighting.setShadows(next.shadows, next.shadowMapSize);
+    lighting.setDiegetic(next.diegeticLights, diegeticDimmed);
+    visual.setDetail(next.detail);
+    monitor.restart(performance.now());
+    resize();
   }
 
   function overviewPose(): CameraPose {
@@ -280,7 +343,7 @@ export function createViewer(
   canvas.addEventListener('pointercancel', (e) => endPointer(e, true));
 
   new ResizeObserver(resize).observe(host);
-  resize();
+  applyQuality(settings);
   applyPose(overviewPose());
   updateView();
 
@@ -288,7 +351,12 @@ export function createViewer(
     // Ambient motion (rotor rings) pauses entirely under prefers-reduced-motion, and while
     // a gesture or camera transition is running so interaction renders get the frame budget.
     const interacting = active.size > 0 || animation !== null;
-    if (!reducedMotion?.matches && !interacting && now - lastAmbient >= AMBIENT_FRAME_MS) {
+    if (
+      settings.ambientMotion &&
+      !reducedMotion?.matches &&
+      !interacting &&
+      now - lastAmbient >= AMBIENT_FRAME_MS
+    ) {
       lastAmbient = now;
       if (world.tick(now)) requestRender();
     }
@@ -301,6 +369,17 @@ export function createViewer(
     if (viewPending && viewThrottle.ready(now)) updateView();
     if (needsRender) {
       needsRender = false;
+      // Frame time: only frames rendered back to back measure the device (renders are on demand).
+      const slow = lastFrameRendered && monitor.sample(now - lastRenderedAt, now);
+      if (slow && autoQuality) {
+        const lower = lowerTier(settings.tier);
+        if (lower) {
+          downgrades++;
+          applyQuality(QUALITY[lower]);
+        } else autoQuality = false;
+      }
+      lastRenderedAt = now;
+      lastFrameRendered = true;
       renderer.render(scene, camera);
       if (camera.zoom !== labelZoom) {
         labelZoom = camera.zoom;
@@ -309,7 +388,7 @@ export function createViewer(
       labels.render(scene, camera);
       frames++;
       if (frames === 1) resolveFirstFrame();
-    }
+    } else lastFrameRendered = false;
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
@@ -405,5 +484,37 @@ export function createViewer(
       requestRender();
     },
     dressings: () => dressings,
+    quality: () => ({
+      tier: settings.tier,
+      auto: autoQuality,
+      pixelRatio: renderer.getPixelRatio(),
+      shadows: renderer.shadowMap.enabled,
+      diegeticLights: lighting.diegeticOn(),
+      detail: visual.detail(),
+      ambientMotion: settings.ambientMotion,
+      frameMs: Number.isNaN(monitor.frameMs) ? null : monitor.frameMs,
+      downgrades,
+    }),
+    setQuality(tier) {
+      autoQuality = false;
+      applyQuality(QUALITY[tier]);
+    },
+    budget() {
+      const calls = renderer.info.render.calls;
+      const triangles = renderer.info.render.triangles;
+      const budget = settings.budget;
+      return {
+        tier: settings.tier,
+        calls,
+        triangles,
+        budget,
+        withinBudget: calls <= budget.calls && triangles <= budget.triangles,
+      };
+    },
+    setDiegeticDimmed(dimmed) {
+      diegeticDimmed = dimmed;
+      lighting.setDiegetic(settings.diegeticLights, dimmed);
+      requestRender();
+    },
   };
 }

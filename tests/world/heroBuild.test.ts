@@ -6,7 +6,7 @@ import { LAYOUT } from '../../src/data/layout';
 import { ROOMS } from '../../src/data/rooms';
 import { buildPrototypeScene } from '../../src/scene/prototypeScene';
 import { buildDressing, HIDDEN_BY_DEFAULT } from '../../src/world/build';
-import { restEmissive } from '../../src/world/kit';
+import { GLOW_INTENSITY, restEmissive } from '../../src/world/kit';
 import { buildConsoleRoom } from '../../src/world/rooms/console/build';
 import {
   describeHeroRooms,
@@ -42,10 +42,18 @@ describe('hero rooms build (lazy chunk)', () => {
   const dressedRooms = HERO_ROOM_IDS.filter((id) => id !== 'E-V');
 
   it('tags every mesh with the full contract and builds only what the description lists', () => {
-    expect(all.length).toBeGreaterThan(50);
     const described = new Set(
       describeHeroRooms().elements.map((e) => `${e.tag.kind}:${e.tag.id}:${e.tag.part}`),
     );
+    // Merged per tag (Execution 8): every described element's tag is still drawn.
+    expect(
+      new Set(
+        all.map(
+          (m) =>
+            `${(m.userData as MeshTag).kind}:${(m.userData as MeshTag).id}:${(m.userData as MeshTag).part}`,
+        ),
+      ),
+    ).toEqual(described);
     for (const m of all) {
       expect(isMeshTag(m.userData), m.name).toBe(true);
       const t = m.userData as MeshTag;
@@ -70,11 +78,12 @@ describe('hero rooms build (lazy chunk)', () => {
     expect(all.some((m) => m instanceof InstancedMesh)).toBe(true);
   });
 
-  it('self-lights glow parts only', () => {
+  it('self-lights glow parts only (accents stay faint)', () => {
     for (const m of all) {
       const t = m.userData as MeshTag;
       const rest = restEmissive(m.material as MeshStandardMaterial);
-      expect(rest.color !== 0, m.name).toBe(GLOW_PARTS.has(t.part));
+      const selfLit = rest.color !== 0 && rest.intensity >= GLOW_INTENSITY;
+      expect(selfLit, m.name).toBe(GLOW_PARTS.has(t.part));
     }
   });
 

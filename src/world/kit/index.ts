@@ -154,22 +154,139 @@ export function restEmissive(material: MeshStandardMaterial): RestEmissive {
 }
 
 /**
- * One material per (tagged node, colour, glow), so highlighting a room never tints another
- * room's meshes. Glow parts are self-lit and record that as their rest emissive.
+ * Procedural surface motifs (Execution 8), drawn in world space by the visibility shader
+ * (src/systems/visibility/materials.ts) and faded out where a motif cell would be smaller
+ * than a few pixels, so they never shimmer at the overview zoom.
+ * - `hex`: hexagonal grating on upward faces (decks, catwalks, bridges).
+ * - `roundel`: inset roundels on vertical faces, optionally backlit (the console-room walls).
+ * - `hex-panel`: hexagonal panel seams on vertical faces (corridors and the power core).
+ */
+export const SURFACE_MOTIFS = ['none', 'hex', 'roundel', 'hex-panel'] as const;
+export type SurfaceMotif = (typeof SURFACE_MOTIFS)[number];
+
+/**
+ * How a part is finished: the connective grammar of dark metallic ribs, hex and roundel
+ * motifs and warm orange accents. Colours stay in {@link PART_COLORS}/{@link TONE_COLORS};
+ * `accent` is a faint emissive (not a light) that keeps an accent readable in shadow.
+ * Every surface stays a `MeshStandardMaterial`, which the visual state patches and clones.
+ */
+export interface SurfaceSpec {
+  readonly roughness: number;
+  readonly metalness: number;
+  readonly motif: SurfaceMotif;
+  /** Backlight of the motif (roundel centres), as an emissive colour; 0 for none. */
+  readonly motifGlow: number;
+  readonly accent: RestEmissive | null;
+}
+
+const MATTE: SurfaceSpec = {
+  roughness: 0.8,
+  metalness: 0.1,
+  motif: 'none',
+  motifGlow: 0,
+  accent: null,
+};
+const METAL: SurfaceSpec = { ...MATTE, roughness: 0.45, metalness: 0.55 };
+const DARK_METAL: SurfaceSpec = { ...MATTE, roughness: 0.35, metalness: 0.7 };
+
+/** Teal backlight of the console room's roundels. */
+export const ROUNDEL_GLOW = 0x1d5f6c;
+/** Warm orange accent strength (console, rotor rings, fuel cells, the closed doors). */
+const ORANGE_ACCENT = 0.18;
+
+const PART_SURFACES: Readonly<Record<Exclude<MeshPart, 'volume'>, SurfaceSpec>> = {
+  connector: METAL,
+  floor: { ...METAL, roughness: 0.55, metalness: 0.35, motif: 'hex' },
+  bridge: { ...METAL, motif: 'hex' },
+  wall: { ...METAL, roughness: 0.6, metalness: 0.35, motif: 'roundel', motifGlow: ROUNDEL_GLOW },
+  rib: DARK_METAL,
+  crown: DARK_METAL,
+  railing: METAL,
+  stairs: METAL,
+  ladder: METAL,
+  doorway: DARK_METAL,
+  'door-closed': { ...METAL, accent: { color: 0x7a2e10, intensity: ORANGE_ACCENT } },
+  console: { ...METAL, accent: { color: 0xc8701a, intensity: ORANGE_ACCENT } },
+  rotor: { ...MATTE, roughness: 0.2, accent: { color: 0x3fb8d0, intensity: 0.45 } },
+  'rotor-ring': { ...DARK_METAL, accent: { color: 0xb0601a, intensity: ORANGE_ACCENT } },
+  ceiling: METAL,
+  catwalk: { ...METAL, motif: 'hex' },
+  shaft: { ...METAL, roughness: 0.6, metalness: 0.35, motif: 'hex-panel' },
+  panel: { ...METAL, accent: { color: 0x2f8fa0, intensity: 0.3 } },
+  'fuel-cell': { ...METAL, accent: { color: 0xb05a10, intensity: ORANGE_ACCENT } },
+  portal: MATTE,
+  stack: MATTE,
+  machine: METAL,
+  prop: MATTE,
+  debris: { ...METAL, roughness: 0.7 },
+  glow: MATTE,
+  rod: MATTE,
+};
+
+/**
+ * Tone-specific finishes: wood and plaster in the cultural spine (no motifs), seamed steel in
+ * maintenance, and rusted hex plating without backlight in the power core.
+ */
+const TONE_SURFACES: Readonly<
+  Partial<Record<RegionId, Partial<Record<MeshPart, Partial<SurfaceSpec>>>>>
+> = {
+  cultural: {
+    floor: { ...MATTE, roughness: 0.7 },
+    wall: MATTE,
+    ceiling: MATTE,
+    panel: { accent: { color: 0x8a5a20, intensity: 0.2 } },
+    catwalk: { motif: 'none' },
+    stairs: { metalness: 0.2 },
+    railing: { metalness: 0.3 },
+  },
+  maintenance: {
+    wall: { motif: 'hex-panel', motifGlow: 0 },
+  },
+  'power-core': {
+    wall: { motif: 'hex-panel', motifGlow: 0, roughness: 0.7 },
+    floor: { roughness: 0.65 },
+    panel: { accent: { color: 0x9a3a10, intensity: 0.3 } },
+  },
+};
+
+/** Finish of a part in a tone (the console finish when the tone has none for it). */
+export function surfaceOf(part: Exclude<MeshPart, 'volume'>, tone?: RegionId): SurfaceSpec {
+  const own = tone === undefined ? undefined : TONE_SURFACES[tone]?.[part];
+  return own ? { ...PART_SURFACES[part], ...own } : PART_SURFACES[part];
+}
+
+/** Index of a motif in the shader's `uTardisMotif`. */
+export function motifIndex(motif: SurfaceMotif): number {
+  return SURFACE_MOTIFS.indexOf(motif);
+}
+
+/**
+ * One material per (tagged node, colour, finish), so highlighting a room never tints another
+ * room's meshes. Glow parts are self-lit and record that as their rest emissive; accents record
+ * theirs too. `userData.motif`/`motifGlow` feed the visibility shader's procedural motifs.
  */
 export class MaterialCache {
   private readonly cache = new Map<string, MeshStandardMaterial>();
 
-  get(tag: MeshTag, color: number): MeshStandardMaterial {
+  get(tag: MeshTag, color: number, tone?: RegionId): MeshStandardMaterial {
     const glow = GLOW_PARTS.has(tag.part);
-    const key = `${tag.kind}:${tag.id}:${color}:${glow ? 'glow' : 'matte'}`;
+    const surface = surfaceOf(tag.part as Exclude<MeshPart, 'volume'>, tone);
+    const key = `${tag.kind}:${tag.id}:${color}:${glow ? 'glow' : 'matte'}:${JSON.stringify(surface)}`;
     let m = this.cache.get(key);
     if (!m) {
-      m = new MeshStandardMaterial({ color, roughness: 0.75, metalness: 0.15, flatShading: true });
-      if (glow) {
-        m.emissive.setHex(color);
-        m.emissiveIntensity = GLOW_INTENSITY;
-        m.userData.restEmissive = { color, intensity: GLOW_INTENSITY } satisfies RestEmissive;
+      m = new MeshStandardMaterial({
+        color,
+        roughness: surface.roughness,
+        metalness: surface.metalness,
+        flatShading: true,
+      });
+      m.userData.motif = motifIndex(surface.motif);
+      m.userData.motifGlow = surface.motifGlow;
+      const rest = glow ? { color, intensity: GLOW_INTENSITY } : surface.accent;
+      if (rest) {
+        m.emissive.setHex(rest.color);
+        m.emissiveIntensity = rest.intensity;
+        m.userData.restEmissive = rest satisfies RestEmissive;
       }
       this.cache.set(key, m);
     }
@@ -507,7 +624,7 @@ export function buildPrimitive(
   materials: MaterialCache,
   tone?: RegionId,
 ): Object3D[] {
-  const m = materials.get(tag, partColor(tag.part as Exclude<MeshPart, 'volume'>, tone));
+  const m = materials.get(tag, partColor(tag.part as Exclude<MeshPart, 'volume'>, tone), tone);
   switch (primitive.type) {
     case 'plate':
       return [outline(tagged(plateGeometry(primitive), tag, m))];

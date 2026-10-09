@@ -4,6 +4,7 @@
 #cutaway-panel,
 #research-panel,
 #route-panel,
-#info-panel {
+#info-panel,
+.stats-overlay {
   visibility: hidden !important;
 }

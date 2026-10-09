@@ -2,7 +2,7 @@
 
 Branch: `claude/tardis-isometric-v1`. Plan: `docs/EXECUTION-PLAN.md`. Rules: `AGENTS.md`.
 
-Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 fast-forwarded `claude/tardis-isometric-v1` to that commit and committed on top, so the plan branch now carries Ex1–Ex7.
+Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 fast-forwarded `claude/tardis-isometric-v1` to that commit and committed on top, so the plan branch now carries Ex1–Ex8.
 
 ## Completed
 
@@ -35,6 +35,12 @@ Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 
   - Routes: Dijkstra by walk-line length over the stable graph (portal toggle), "Route to console", from/to selectors over the placed rooms, the walked edges tinted through the `route` slot, a route tube along the walk lines, and a step list naming each edge kind.
   - Progressive labels: Regions (default), Research (grades and source notes) and Structure (IDs, anchors, edges) modes. Labels scale with zoom, and anchor and edge labels wait until zoomed in.
   - No baseline changed: the overlay, route and new labels are off or hidden in the default view, and baselines hide the label layer.
+- **Ex8:** visual language, lighting and performance.
+  - Procedural finishes in the connective grammar: dark metallic ribs, crowns and door frames; a hex grating on decks, catwalks and bridges; backlit teal roundels on the console-room walls; hex panel seams in corridors and the power core; faint warm-orange accents (console, rotor rings, fuel cells, closed doors) and teal panel accents. Cultural rooms stay matte wood and plaster.
+  - Two lighting layers: readability (teal hemisphere, warm key light, the only shadow caster) and six diegetic point lights giving the hero rooms their identities (rotor teal, the Eye, the engine fire, library lamplight, the architecture orbs, the fuel rods).
+  - Static merging per owner tag and material: the desktop overview went from 1265 draw calls (no shadows) to 243 without shadows and 409 with them.
+  - Quality tiers (high / medium / low) with frame-time auto-downgrade, a dev-only stats overlay, and draw-call and triangle budgets in the hook.
+  - All four baselines regenerated intentionally (see Validation).
 
 ## Architecture / decisions
 
@@ -271,6 +277,23 @@ Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 
   - Visual baselines: `toHaveScreenshot` on the canvas with `stylePath: e2e/baseline.css` (hides labels and the index, cutaway and info panels so fonts don't matter), `reducedMotion: 'reduce'` (rings at rest, instant focus), and `maxDiffPixelRatio: 0.01`. Snapshots live in `e2e/<spec>-snapshots/`, desktop and Linux only.
 - **CI (`.github/workflows/ci.yml`).** On pushes to `main` and `claude/**` and on PRs: `npm ci` → lint → typecheck → unit → build → `npx playwright install --with-deps chromium` → e2e. On failure it uploads `playwright-report/` and `test-results/`.
 
+- **Visual language (Ex8).**
+  - Finishes live in `src/world/kit/index.ts`: `SurfaceSpec {roughness, metalness, motif, motifGlow, accent}`, `PART_SURFACES` and `TONE_SURFACES`, read by `surfaceOf(part, tone)`. `MaterialCache.get(tag, color, tone)` keys materials by owner, colour and finish; colours still come from `PART_COLORS`/`TONE_COLORS`. Accents are a faint emissive recorded as `userData.restEmissive` (intensity always below `GLOW_INTENSITY`, so only `GLOW_PARTS` are self-lit). `userData.motif` (index into `SURFACE_MOTIFS`: none, hex, roundel, hex-panel) and `userData.motifGlow` feed the shader.
+  - Motifs are drawn in world space by the visibility patch (`materials.ts`, program key `tardis-visibility-2`, define `TARDIS_SURFACE`): `tardisMotifShade` multiplies the base colour after `color_fragment`, the roundel backlight adds to `totalEmissiveRadiance` after `emissivemap_fragment`. Motif and backlight are per-material uniforms (`uTardisMotif`, `uTardisMotifGlow`), so all surfaces share one program. Each motif fades out when a cell covers only a few pixels (`fwidth`), so the overview never shimmers. Cells: `HEX_CELL_NU` 1.6, `ROUNDEL_CELL_NU` 2.4.
+  - A colour override (the overlay) makes the variant matte (`OVERRIDE_FINISH`), drops the accent emissive (unless tinted) and the backlight, so evidence colours read true; the base keeps its finish.
+- **Lighting (Ex8, `src/scene/lighting.ts`).** `describeLights()` is pure: six `LightSpec {id, roomId, color, intensity, distance, position, note}` in priority order (rotor C-M, Eye E-01, engine fire ENG-01, library L-01, orbs ARS-01, fuel rods F-01), each placed from the layout box (the Eye and the fireball from the walkway sill minus `HERO_PARAMS` drops) and tested to stand inside its room. `createLighting(scene, bounds, specs)` builds the readability layer (hemisphere `HEMI_*`, key light `KEY_*` whose orthographic shadow camera covers the overview, shadow `intensity` 0.55) and the point lights; `setDiegetic(count, dimmed)`, `setShadows(on, mapSize)`, `diegeticOn()`. The viewer owns it; `main.ts` dims the diegetic lights while the evidence overlay is on.
+- **Shadows (Ex8).** The key light casts on the high tier only. The visual state sets every managed mesh `castShadow`/`receiveShadow` and gives it `customDepthMaterial = MaterialStates.depthVariant(base, resolved)`: a `MeshDepthMaterial` patched with the same clip, cut and ghost uniforms (`TARDIS_DEPTH`) that discards any fragment not drawn solid. Cut walls, ghosts, hidden meshes and geometry above the section therefore cast no shadow.
+- **Static merging (Ex8, `src/world/merge.ts`).** `buildElements` ends with `mergeStatic(root)`: the direct, non-instanced tagged meshes of a group (and of each child group, e.g. a spinning ring, within it) that share tag, material and visibility become one mesh (position and normal only, non-indexed), and their outlines one `LineSegments` child. A merged mesh keeps one owner and one part, so every layer resolves exactly as before; picks name the owner. The scene went from about 1330 objects to about 285.
+  - **Instancing and owners.** Decorative repeats stay `InstancedMesh`es, one per owner and kind (`decorElements`, hero repeats); an instanced mesh maps to exactly one owner, which is how selection, the overlay and routes reach it (unit-tested). Cross-owner instancing was rejected: the cut spine, ghost and tints are per-owner material uniforms.
+- **Quality tiers (Ex8, `src/systems/quality/tiers.ts`, pure).**
+  - `QUALITY[tier]`: `pixelRatioCap` (2 / 1.5 / 1), `shadows` (high only, 2048 map), `diegeticLights` (6 / 3 / 0), `ambientMotion` (off on low), `detail` (`reduced` on low) and `budget {calls, triangles}` (480 / 85k, 300 / 45k, 260 / 36k).
+  - `initialTier(device)`: low for ≤ 2 cores or ≤ 2 GB, medium for a coarse pointer or a viewport ≤ 720 px, else high. `parseQualityOptions(search, dev)`: `?quality=high|medium|low` pins a tier; `?test` turns auto-downgrade off unless `quality=auto` (headless frame times are software rendering); `?stats` or a dev build shows the stats overlay.
+  - `FrameTimeMonitor`: samples only frames rendered back to back (renders are on demand); when 75% of a 40-sample window exceeds 33.3 ms it asks for one step down, then waits 3 s. It never upgrades, so the picture never oscillates. Intervals over 1 s are ignored.
+  - Reduced detail is the visual state's new lowest layer `quality` (`VISUAL_LAYERS` now starts with it): `detailEffect` hides `DETAIL_PARTS` (panel, debris, prop) except in the selected room. `VisualState.setDetail(level)` / `detail()`.
+  - Viewer: `createViewer(host, world, visual, {lights, quality: {tier, auto}})`, `quality()` (`QualitySnapshot`), `setQuality(tier)` (pins), `budget()` (`BudgetReport`: last frame's calls and triangles from `renderer.info`, shadow pass included, against the tier's budget), `setDiegeticDimmed(dimmed)`.
+  - `src/ui/statsOverlay.ts`: `statsText` and `createStatsOverlay` (a `pre.stats-overlay`, `aria-hidden`, refreshed every 500 ms, `.over-budget` when over). Baselines hide it.
+  - Test hook (Ex8): `quality()`, `budget()`, `setQuality(tier)`.
+
 ## Important files
 
 - `src/data/{types,rooms,connections,evidence,eras,layout,paths}.ts`
@@ -281,8 +304,10 @@ Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 
 - `src/world/rooms/hero/{params,describe,heroRooms}.ts`
 - `src/systems/visibility/{state,cutaway,materials,manager}.ts`
 - `src/systems/navigation/{routes,routeView}.ts`, `src/systems/research/overlay.ts`, `src/systems/labels/labels.ts`
+- `src/world/merge.ts`, `src/scene/lighting.ts`, `src/systems/quality/tiers.ts`, `src/ui/statsOverlay.ts`
 - `src/ui/{roomIndex,infoPanel,cutawayPanel,researchPanel,routePanel}.ts`, `src/main.ts`, `index.html`, `src/style.css`
 - `tests/systems/visibility/{state,cutaway,manager}.test.ts`, `tests/ui/cutawayPanel.test.ts`
+- `tests/world/merge.test.ts`, `tests/systems/quality/tiers.test.ts`, `tests/scene/lighting.test.ts`, `tests/systems/visibility/materials.test.ts`, `tests/ui/statsOverlay.test.ts`, `e2e/perf.spec.ts`
 - `tests/navigation/{routes,routeView}.test.ts`, `tests/systems/research/overlay.test.ts`, `tests/systems/labels/labels.test.ts`, `tests/ui/{infoPanel,researchPanel,routePanel}.test.ts`
 - `e2e/helpers.ts` (`waitHero`, `press`, `setCutawayOpen`, `setPanelOpen`, `visibility`, `pickableRooms`, `route`, `routeHighlight`, `research`), `e2e/{scene,selection,mobile,console,overview,hero,cutaway,research,route}.spec.ts`, `e2e/baseline.css`, the snapshots `e2e/console.spec.ts-snapshots/console-room-desktop-linux.png`, `e2e/overview.spec.ts-snapshots/overview-desktop-linux.png` and `e2e/hero.spec.ts-snapshots/{library-region,power-core-region}-desktop-linux.png`, `playwright.config.ts`, `.github/workflows/ci.yml`
 - `research/`:
@@ -295,33 +320,24 @@ Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 
 
 ## Validation
 
-- **Unit:** `npm test` passes: 304 tests in 28 files.
-  - New in Ex7:
-    - `tests/navigation/routes.test.ts` (walk lines from `describeTier1Map()`):
-      - every v1 edge has a walk line;
-      - console → library (B02, B04, B07, B08, B09, with kinds and the summed length);
-      - console → engine via B37 with portals off, and via B28 when allowed (shorter, no B37);
-      - the route to the console from ENG-01, oriented step by step;
-      - no route to ENG-01 without B37 and the portal; trivial and unknown routes;
-      - continuity over every ordered pair of placed rooms: each step's walk line runs from an anchor of its start room to an anchor of its end room, and the route line starts and ends on the end rooms' anchors with no repeated points.
-    - `tests/navigation/routeView.test.ts`: the route layer tints only walked edges; the tube spans −35 to 0 for ENG-01 → C-M, takes no raycasts, clips at the section and clears.
-    - `tests/systems/research/overlay.test.ts`: colours per class, the portal apart, glow parts, the selection outranking the overlay, the legend, and the overlay recolouring every mesh of the real scene (all four classes present) and restoring the base materials when cleared.
-    - `tests/systems/labels/labels.test.ts`: zoom scale and bands, grades text, the midpoint; one edge label per v1 edge and one anchor label per anchor; one room label per placed room with ID, name and grades; modes, the selection and the route's labels.
-    - `tests/systems/visibility/manager.test.ts`: `layerTargets` and the route tint on exactly the routed edges' meshes.
-    - `tests/ui/{infoPanel,researchPanel,routePanel}.test.ts`: the five axes and the connection axis per edge (deferred edges marked; `main.ts` passes all `CONNECTIONS`); the known-vs-inferred indicator; every cited source resolved once with all its URLs; Route to console (disabled on C-M); the overlay toggle and legend; the label-mode radios; the room selectors, portal toggle, step list and summaries.
-  - The Ex6 suites are unchanged apart from the new manager case. `tests/ui/infoPanel.test.ts` now expects five axes (the Ex7 contract).
-  - `npm run typecheck`, `npm run lint` and `npm run build` (no warnings) pass. `npx prettier --check .` passes.
-- **E2E:** `npm run test:e2e` passes: 56 passed, 6 skipped, in about 3.8 min. J8 is touch-only, so it skips on desktop; the baselines are desktop-only, so they skip on mobile.
-  - New `e2e/research.spec.ts` (desktop and mobile, reduced motion):
-    - J5: the overlay is off by default and the legend hidden. Turning it on from the Research panel shows the five legend entries with swatches, changes the canvas pixels, and keeps the draw-call count; turning it off restores the canvas pixel for pixel.
-    - Label modes: by default 4 region labels and no room, door, edge or anchor labels; selecting E-01 on the canvas shows its label with its name; Research shows all 19 room labels with grades, the two reported-door labels and the B37 label, no anchors; Structure hides grades and feature labels, keeps anchors hidden at the overview zoom, and shows anchors and edge labels after Focus.
-  - New `e2e/route.spec.ts` (J6, desktop and mobile):
-    - ENG-01 picked from the room index, then "Route to console": the hook reports B37, B22, B16, B05, B03 with rooms and kinds, `routeHighlight` names exactly those edges, and the step list and summary match. "Allow portal (B28)" reroutes through B28, shorter and without B37.
-    - From/To selectors: L-01 → S-01 (nine edges, B02 stairs fifth), its ten room labels visible in the default mode; Clear empties the route, the highlight and the step list.
-  - `e2e/selection.spec.ts` (J3) and `e2e/hero.spec.ts` now expect the five axes; J3 also checks the indicator and the source list.
-  - J1, J2, J4, J7, J8, `console.spec.ts` and `overview.spec.ts` are unchanged and pass.
-- **Visual baselines:** unchanged in Ex7 and passing. The overlay, routes and new labels are off by default, and `e2e/baseline.css` hides the label layer and now the research and route panels too.
-- **Performance:** `renderStats` in the desktop overview is still 1265 calls and 34,428 triangles (measured this session). The overlay adds no draw calls (J5); a shown route adds one tube.
+- **Unit:** `npm test` passes: 332 tests in 33 files.
+  - New in Ex8:
+    - `tests/world/merge.test.ts`: merging per tag, material and visibility keeps triangles, bounds and outlines (one line set), leaves instanced meshes and ring groups' own merges alone, and leaves no mergeable siblings in the built scene; a raycast on a merged mesh names its owner; selection tints exactly the room's merged and instanced meshes; the overlay recolours instanced edge decor and the route tints exactly B37's meshes.
+    - `tests/systems/quality/tiers.test.ts`: tier ordering and budgets, `lowerTier`, pixel-ratio caps, `initialTier` (desktop high, touch or ≤ 720 px medium, weak hardware low), `?quality`/`?test`/`?stats` parsing, and the frame-time monitor (no downgrade at target, one per full slow window then a cooldown, tolerance of occasional slow frames, stalls ignored, restart).
+    - `tests/scene/lighting.test.ts`: each diegetic light inside its placed room, priority order, tier counts, overlay dimming, key-light shadows covering the map.
+    - `tests/systems/visibility/materials.test.ts`: motif uniforms, one shared surface program, matte overlay variants without accent or backlight, depth variants carrying ghost and cut.
+    - `tests/ui/statsOverlay.test.ts`; detail-layer cases in `state.test.ts`, surface-finish cases in `kit.test.ts`, and a manager case (shadow flags and depth materials on every mesh, reduced detail).
+  - Contract updates to existing tests: the build tests' raw mesh-count floors (> 300, > 100, > 50) became "every described tag is drawn" (merging cuts the counts); the glow tests now allow faint accents (self-lit means intensity ≥ `GLOW_INTENSITY`); `VISUAL_LAYERS` starts with `quality`.
+  - `npm run typecheck`, `npm run lint` and `npm run build` (no warnings) pass; `npx prettier --check src tests e2e` passes.
+- **E2E:** `npm run test:e2e` passes: 64 passed, 6 skipped. J8 is touch-only, so it skips on desktop; the baselines are desktop-only, so they skip on mobile. All journeys J1–J8 pass on both projects.
+  - New `e2e/perf.spec.ts` (both projects, reduced motion): the overview starts on the device tier (desktop high, mobile medium), with no auto-downgrade in test runs, and is within that tier's call and triangle budget with no console errors; every tier pinned through the hook stays within its budget and draws fewer calls than the tier above; the stats overlay is absent by default and shown with `?stats`; `?quality=low` pins the low tier. No frame rates are asserted.
+- **Visual baselines:** all four regenerated intentionally (`--update-snapshots=all`, desktop) and reviewed image by image:
+  - `overview`: teal console room with backlit roundels and the lit rotor, the fire-lit Eye and engine void, steel corridors, the warm library; geometry and framing unchanged.
+  - `console-room`: hex grating on the decks, roundels on the gallery and lower walls, orange rotor rings and console, dark ribs.
+  - `library-region`: the library's stacks and galleries (the warm stacks read red-brown through the cut wall), the B07–B09 run in cultural wood.
+  - `power-core-region`: rust hex plating, the Eye and fireball lighting their chambers, fuel rods, the violet portal.
+  - The old baselines still passed within `maxDiffPixelRatio` 0.01 (the map covers a fifth of the canvas and many shading changes fall under the pixel threshold), so they were rewritten explicitly.
+- **Performance** (desktop overview, `budget()`, SwiftShader): high 409 calls / 68,856 triangles (shadow pass included), medium 243 / 34,428, low 217 / 27,692; Ex7 was 1265 calls / 34,428 triangles without shadows. The overlay still adds no draw calls (J5).
 - **CI:** not observed running from this session (no GitHub Actions access here).
 
 ## Known incomplete work
@@ -337,26 +353,28 @@ Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 
   - The two feature labels (the reconfiguring B18 door, the B28 portal) belong to edges, so the default mode never shows them; they show in the Research mode as source notes.
 - **Cut geometry.**
   - The cut is a vertical plane through each owner's spine, facing the camera. Side walls are cut along their near half at oblique yaws, by design (a section through the room's centre line).
-  - The section leaves cut solids open (no caps), so a clipped wall reads hollow at the cut. Stencil caps would be Ex8 polish.
-  - The dither keeps 1/8 of pixels on cut walls and 1/4 on ghosts. The pattern is pixel-aligned and stable, but it reads as a fine grid; Ex8 may retune it.
+  - The section leaves cut solids open (no caps), so a clipped wall reads hollow at the cut. Stencil caps were not added in Ex8 (out of its scope list).
+  - The dither keeps 1/8 of pixels on cut walls and 1/4 on ghosts. The pattern is pixel-aligned and stable, but it reads as a fine grid; Ex8 left it unchanged.
 - **Occlusion that remains.** C-LAD and the B06 ladder are occluded in the default overview and exposed by the section (stop −8). The far (westward) leg of B37 lies behind the Eye chamber's far wall, which the cut keeps. Focusing ENG-01 or M-02 (B37's ends) keeps B37 solid and ghosts the chamber, which shows the leg (checked by eye); no test covers it.
 - **Controls.**
   - Focus mode frames the room on entry, but does not restore the camera on exit.
   - Home resets only the camera; "Reset cutaway" resets only the visibility.
   - On a 390-px toolbar, "Rooms", "Cutaway", "Research" and "Route" sit past the right edge until the row is scrolled.
-- **Performance:** with the hero rooms, the overview draws 1265 calls and 34.4k triangles (`renderStats`, desktop), up from about 924 and 17.7k in Ex4.
-  - Each non-instanced element is its own mesh plus an outline.
-  - Hero repeats (shelves, books, orbs, rods, debris) are instanced.
-  - Merging and batching are Ex8 performance work. Merged meshes must keep one owner each (or carry per-vertex owners), because the cut's spine and every override (selection, overlay, route) are per owner.
+- **Performance and quality.**
+  - The budgets are calibrated on SwiftShader at 1280×800 and 390×844; real GPUs were not measured. The auto-downgrade thresholds (33.3 ms, 75% of 40 frames) are untuned on real devices, and it never upgrades.
+  - Frame time is measured between back-to-back rendered frames (CPU-side rAF intervals); GPU time is not measured.
+  - Outlines are still one draw call per merged mesh; merging outlines across parts of an owner would need per-part cut state in the line shader.
+  - Shadows are key-light only (high tier). Point lights cast none. Changing tier toggles lights and shadow maps, which recompiles the shared programs once.
+  - Low tier hides panels, debris and props outside the selected room; that includes the frozen-explosion debris, which is a hero feature.
+- **Look.** The motifs are procedural approximations (hex grating, roundels, hex seams), not measured from the sets. Library lamplight is placed at the box centre, not on authored lamp positions. No textures (KTX2 was out of scope).
 - Library ladders rise from the floor beside the galleries' inner railings. The railings are not broken where a ladder arrives; this is cosmetic.
 - Tier-2 doors are closed thresholds only (no Tier-2 rooms). The kit is axis-aligned only, so paths must use axis-aligned legs (tested).
-- Region tones and glow are greybox shades, not materials (Ex8). The visual state owns every override: the selection highlight, the glow's rest emissive, the overlay colours and the route tint.
+- Region tones still set the colours; Ex8 added finishes, motifs and accents on top. The visual state owns every override: the selection highlight, the rest emissive (glow and accents), the overlay colours and the route tint, and now the shadow-pass materials.
 
 ## Next execution
 
-- **Ex8** (Visual language, lighting and performance, High). Geometry and topology are frozen.
-  - Procedural materials in the connective grammar (dark metallic ribs, hex and roundel motifs, blue/teal ambient, warm orange accents), distinct hero-room lighting, and two lighting layers (readability plus limited diegetic emissives), legible at isometric scale.
-    - Materials must stay `MeshStandardMaterial` (or extend `MaterialStates.addBase`), because the visual state patches and clones them for the cut, ghosts, the overlay colour and the tints.
-  - Instancing for repeated kit parts and static merging per room, keeping selection, overlay and route highlighting per owner (instance → owner mapping).
-  - Adaptive quality tiers with frame-time auto-downgrade, a dev-only stats overlay, and draw-call and triangle budgets exposed through the hook.
-  - E2E: a perf-budget spec on `renderer.info` at the overview, and every journey on both projects. Regenerate the four baselines intentionally, review each image, and note it in the handoff. Never assert FPS under SwiftShader.
+- **Ex9** (Final integration and full regression, High). Integration and validation only.
+  - Run lint, typecheck, unit, build and the full E2E suite (J1–J8 and `perf.spec.ts`, both projects, all four baselines).
+  - Exercise the cross-system interactions: cutaway × selection × routes × overlay × merged/instanced meshes × quality tiers × mobile.
+  - Walk the DoD checklist and bible §F4 acceptance tests with evidence; confirm zero metre values in runtime data and no floating rooms.
+  - README (what the project is, how to run and test, provenance caveats, attributions), final handoff with the post-v1 backlog, CI green on the branch. A PR to main only if the user asks.

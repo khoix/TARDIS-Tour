@@ -8,6 +8,8 @@ import {
   PART_COLORS,
   plateGeometry,
   restEmissive,
+  ROUNDEL_GLOW,
+  surfaceOf,
   sweepGeometry,
   TONE_COLORS,
 } from '../../src/world/kit';
@@ -498,5 +500,40 @@ describe('kit builders for the Execution 4 primitives', () => {
     expect(matte.emissive.getHex()).toBe(0);
     expect(restEmissive(matte)).toEqual({ color: 0, intensity: 1 });
     for (const part of GLOW_PARTS) expect(MESH_PARTS).toContain(part);
+  });
+
+  it('finishes parts in the connective grammar: dark metal ribs, hex and roundel motifs, warm accents', () => {
+    const rib = surfaceOf('rib');
+    expect(rib.metalness).toBeGreaterThanOrEqual(0.6);
+    expect(rib.roughness).toBeLessThan(surfaceOf('wall').roughness);
+    expect(surfaceOf('floor').motif).toBe('hex');
+    expect(surfaceOf('catwalk').motif).toBe('hex');
+    expect(surfaceOf('wall')).toMatchObject({ motif: 'roundel', motifGlow: ROUNDEL_GLOW });
+    expect(surfaceOf('wall', 'maintenance')).toMatchObject({ motif: 'hex-panel', motifGlow: 0 });
+    expect(surfaceOf('wall', 'cultural').motif).toBe('none');
+    expect(surfaceOf('floor', 'cultural').motif).toBe('none');
+    for (const part of ['console', 'rotor-ring', 'fuel-cell'] as const) {
+      const color = surfaceOf(part).accent?.color ?? 0;
+      expect(color, part).not.toBe(0);
+      // Warm: red dominates blue.
+      expect((color >> 16) & 0xff, part).toBeGreaterThan(color & 0xff);
+    }
+    for (const part of MESH_PARTS) {
+      if (part === 'volume') continue;
+      const accent = surfaceOf(part).accent;
+      if (accent) expect(accent.intensity, part).toBeLessThan(GLOW_INTENSITY);
+    }
+  });
+
+  it('records an accent as the rest emissive, and finishes by tone', () => {
+    const cache = new MaterialCache();
+    const panel = cache.get({ ...TAG, part: 'panel' }, 0x6fb6c8);
+    expect(restEmissive(panel)).toEqual(surfaceOf('panel').accent);
+    expect(panel.emissive.getHex()).toBe(surfaceOf('panel').accent?.color);
+    const steel = cache.get({ ...TAG, part: 'wall' }, 0x36434a, 'maintenance');
+    const wood = cache.get({ ...TAG, part: 'wall' }, 0x36434a, 'cultural');
+    expect(steel).not.toBe(wood);
+    expect(steel.metalness).toBeGreaterThan(wood.metalness);
+    expect(steel.userData.motif).not.toBe(wood.userData.motif);
   });
 });

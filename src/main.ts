@@ -1,12 +1,14 @@
 import { CONNECTIONS, V1_CONNECTIONS } from './data/connections';
 import { LAYOUT } from './data/layout';
 import { getRoom, PLACED_ROOMS, ROOMS } from './data/rooms';
+import { describeLights } from './scene/lighting';
 import { buildPrototypeScene } from './scene/prototypeScene';
 import { installTestHook, testHookEnabled } from './scene/testHook';
 import { createViewer } from './scene/viewer';
 import { LabelSystem } from './systems/labels/labels';
 import { createRouteLine, routeLayer } from './systems/navigation/routeView';
 import { CONSOLE_ROOM_ID, planRoute, type Route } from './systems/navigation/routes';
+import { initialTier, parseQualityOptions } from './systems/quality/tiers';
 import { overlayLayer } from './systems/research/overlay';
 import { VisualState } from './systems/visibility/manager';
 import { buildConsoleRoom } from './world/rooms/console/build';
@@ -16,6 +18,7 @@ import { renderInfoPanel } from './ui/infoPanel';
 import { DEFAULT_RESEARCH, renderResearchPanel, type ResearchSettings } from './ui/researchPanel';
 import { groupPlacedRooms, renderRoomIndex, setIndexSelection } from './ui/roomIndex';
 import { EMPTY_ROUTE_QUERY, renderRoutePanel, type RouteQuery } from './ui/routePanel';
+import { createStatsOverlay } from './ui/statsOverlay';
 import './style.css';
 
 function required<T extends HTMLElement>(selector: string): T {
@@ -41,8 +44,27 @@ const world = buildPrototypeScene(ROOMS, V1_CONNECTIONS, LAYOUT, [
   buildSkeleton(),
 ]);
 const visual = new VisualState(world, ROOMS, V1_CONNECTIONS);
-const viewer = createViewer(viewport, world, visual);
 const compact = window.matchMedia('(max-width: 720px)');
+// Quality: start from the device, or a pinned `?quality=` tier; slow frames step it down.
+const qualityOptions = parseQualityOptions(window.location.search, import.meta.env.DEV);
+const viewer = createViewer(viewport, world, visual, {
+  lights: describeLights(),
+  quality: {
+    tier:
+      qualityOptions.pinned ??
+      initialTier({
+        devicePixelRatio: window.devicePixelRatio,
+        coarsePointer: window.matchMedia('(pointer: coarse)').matches,
+        viewportWidth: window.innerWidth,
+        hardwareConcurrency: navigator.hardwareConcurrency,
+        deviceMemory: (navigator as Navigator & { deviceMemory?: number }).deviceMemory,
+      }),
+    auto: qualityOptions.auto,
+  },
+});
+if (qualityOptions.stats) {
+  createStatsOverlay(viewport, () => ({ quality: viewer.quality(), budget: viewer.budget() }));
+}
 
 // Edge and anchor labels (structure and research modes) join the world and the visual state.
 const labels = new LabelSystem(viewer.labelLayer, ROOMS, V1_CONNECTIONS);
@@ -116,8 +138,11 @@ const researchPanel = renderResearchPanel(researchContainer, {
 });
 function updateResearch(patch: Partial<ResearchSettings>) {
   research = { ...research, ...patch };
-  if (patch.overlay !== undefined)
+  if (patch.overlay !== undefined) {
     visual.setLayer('overlay', research.overlay ? overlayLayer : null);
+    // Evidence colours read in readability light only: diegetic lights would tint them.
+    viewer.setDiegeticDimmed(research.overlay);
+  }
   labels.setMode(research.labelMode);
   researchPanel.sync(research);
 }

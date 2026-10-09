@@ -8,6 +8,7 @@ import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import type { Vec3 } from '../data/layout';
 import { type Bounds, unionBounds } from '../scene/camera/isometric';
 import { buildPrimitive, MaterialCache } from './kit';
+import { mergeStatic } from './merge';
 import {
   type AnchorPlacement,
   isMeshTag,
@@ -120,6 +121,7 @@ function buildElements(d: StructureDescription): {
     tag.position.set(...l.position);
     root.add(tag);
   }
+  mergeStatic(root);
   return { root, spinners };
 }
 

@@ -107,6 +107,30 @@ select:focus-visible {
   display: block;
 }
 
+.stats-overlay {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 3;
+  margin: 0;
+  padding: 6px 8px;
+  font:
+    11px/1.35 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  color: #cfe6ee;
+  background: rgb(8 16 20 / 80%);
+  border: 1px solid #2c4a54;
+  border-radius: 4px;
+  pointer-events: none;
+  white-space: pre;
+}
+
+.stats-overlay.over-budget {
+  border-color: #e8913a;
+}
+
 .label-layer {
   --label-scale: 1;
   position: absolute;

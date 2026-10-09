@@ -8,7 +8,8 @@ import type { EdgeKind, RegionId } from '../data/types';
 import type { Route } from '../systems/navigation/routes';
 import type { VisibilitySnapshot } from '../systems/visibility/manager';
 import type { ResearchSettings } from '../ui/researchPanel';
-import type { CameraState, Viewer } from './viewer';
+import type { QualityTier } from '../systems/quality/tiers';
+import type { BudgetReport, CameraState, QualitySnapshot, Viewer } from './viewer';
 
 /** The planned route as plain data (Execution 7). */
 export interface RouteSnapshot {
@@ -52,6 +53,12 @@ export interface TardisTestHook {
   routeHighlight(): string[];
   /** Evidence overlay on/off and the label mode (Execution 7). */
   research(): ResearchSettings;
+  /** Quality tier in force and what it draws (Execution 8). */
+  quality(): QualitySnapshot;
+  /** Last frame's draw calls and triangles against the tier's budget (Execution 8). */
+  budget(): BudgetReport;
+  /** Pins a quality tier. */
+  setQuality(tier: QualityTier): void;
   select(id: string | null): void;
   focusRoom(id: string): void;
   focusRegion(region: RegionId): void;
@@ -105,6 +112,9 @@ export function installTestHook(viewer: Viewer, app: HookSources): TardisTestHoo
         .filter((key) => key.startsWith('connection:'))
         .map((key) => key.slice('connection:'.length)),
     research: () => app.research(),
+    quality: () => viewer.quality(),
+    budget: () => viewer.budget(),
+    setQuality: (tier) => viewer.setQuality(tier),
     select: (id) => viewer.select(id),
     focusRoom: (id) => viewer.focusRoom(id),
     focusRegion: (region) => viewer.focusRegion(region),

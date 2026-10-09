@@ -20,12 +20,23 @@ function meshes(root: Object3D): Mesh[] {
   return out;
 }
 
+const tagKeys = (list: readonly Mesh[]) =>
+  new Set(
+    list.map((m) => {
+      const t = m.userData as MeshTag;
+      return `${t.kind}:${t.id}:${t.part}`;
+    }),
+  );
+
 describe('skeleton build', () => {
   const built = buildSkeleton();
   const all = meshes(built.root);
 
   it('tags every mesh with the full {kind, id, part, evidenceClass} contract', () => {
-    expect(all.length).toBeGreaterThan(300);
+    // Merged per tag (Execution 8): every described element's tag is still drawn.
+    expect(tagKeys(all)).toEqual(
+      new Set(describeSkeleton().elements.map((e) => `${e.tag.kind}:${e.tag.id}:${e.tag.part}`)),
+    );
     for (const m of all) expect(isMeshTag(m.userData), m.name).toBe(true);
   });
 

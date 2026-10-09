@@ -4,7 +4,7 @@
  * in src/world/structure.ts), and {@link composeLayers} merges the layers' requests into one
  * {@link ResolvedVisual} per mesh, so features never fight over a material.
  *
- * Built-in layers: `cutaway` (camera-facing wall cut, ceiling hide), `isolation` (region or level
+ * Built-in layers: `quality` (the reduced tier's detail, Execution 8), `cutaway` (camera-facing wall cut, ceiling hide), `isolation` (region or level
  * isolation, and focus mode) and `selection`. `overlay` and `route` are slots for Execution 7.
  */
 
@@ -13,7 +13,14 @@ import type { Bounds } from '../../scene/camera/isometric';
 import type { MeshPart, MeshTag } from '../../world/structure';
 
 /** Layers in ascending precedence: for ghost, tint and colour the last layer that sets one wins. */
-export const VISUAL_LAYERS = ['cutaway', 'isolation', 'overlay', 'route', 'selection'] as const;
+export const VISUAL_LAYERS = [
+  'quality',
+  'cutaway',
+  'isolation',
+  'overlay',
+  'route',
+  'selection',
+] as const;
 export type VisualLayerId = (typeof VISUAL_LAYERS)[number];
 
 /** Emissive override (selection highlight, and route highlight in Ex7). */
@@ -271,4 +278,21 @@ export function selectionEffect(
   if (selected === null || tag.kind !== 'room' || tag.id !== selected) return undefined;
   if (iso?.focus === selected) return undefined;
   return { tint: SELECTED_TINT, ghost: 1 };
+}
+
+// ── Quality detail (Execution 8) ─────────────────────────────────────────────
+
+/** Small repeated detail the reduced quality tier leaves out, except in the selected room. */
+export const DETAIL_PARTS: ReadonlySet<MeshPart> = new Set<MeshPart>(['panel', 'debris', 'prop']);
+
+export type DetailLevel = 'full' | 'reduced';
+
+export function detailEffect(
+  tag: MeshTag,
+  detail: DetailLevel,
+  selected: string | null,
+): LayerEffect | undefined {
+  if (detail === 'full' || !DETAIL_PARTS.has(tag.part)) return undefined;
+  if (tag.kind === 'room' && tag.id === selected) return undefined;
+  return { hidden: true };
 }

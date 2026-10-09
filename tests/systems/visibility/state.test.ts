@@ -24,6 +24,8 @@ import {
   selectionEffect,
   SOLID,
   VISUAL_LAYERS,
+  DETAIL_PARTS,
+  detailEffect,
 } from '../../../src/systems/visibility/state';
 import type { MeshPart, MeshTag } from '../../../src/world/structure';
 
@@ -47,7 +49,14 @@ const settings = (patch: Partial<CutawaySettings>): CutawaySettings => ({
 
 describe('layer composition', () => {
   it('orders the layers cutaway < isolation < overlay < route < selection', () => {
-    expect(VISUAL_LAYERS).toEqual(['cutaway', 'isolation', 'overlay', 'route', 'selection']);
+    expect(VISUAL_LAYERS).toEqual([
+      'quality',
+      'cutaway',
+      'isolation',
+      'overlay',
+      'route',
+      'selection',
+    ]);
   });
 
   it('is solid and pickable with no effects', () => {
@@ -232,6 +241,24 @@ describe('selection layer', () => {
   it('leaves the focused room in its own colours', () => {
     const iso = isolationSet({ kind: 'room', id: 'L-01' }, ROOMS, V1_CONNECTIONS, bounds);
     expect(selectionEffect(room('L-01', 'stack'), 'L-01', iso)).toBeUndefined();
+  });
+});
+
+describe('quality detail layer (Execution 8)', () => {
+  it('hides small detail parts at reduced detail, except in the selected room', () => {
+    expect([...DETAIL_PARTS].sort()).toEqual(['debris', 'panel', 'prop']);
+    expect(detailEffect(room('ENG-01', 'debris'), 'full', null)).toBeUndefined();
+    expect(detailEffect(room('ENG-01', 'debris'), 'reduced', null)).toEqual({ hidden: true });
+    expect(detailEffect(edge('B37', 'panel'), 'reduced', 'B37')).toEqual({ hidden: true });
+    expect(detailEffect(room('ENG-01', 'debris'), 'reduced', 'ENG-01')).toBeUndefined();
+    expect(detailEffect(room('ENG-01', 'floor'), 'reduced', null)).toBeUndefined();
+    // Hiding is a union: no higher layer brings the detail back.
+    expect(
+      composeLayers({
+        quality: detailEffect(room('ENG-01', 'debris'), 'reduced', null),
+        selection: { tint: SELECTED_TINT, ghost: 1 },
+      }).hidden,
+    ).toBe(true);
   });
 });
 

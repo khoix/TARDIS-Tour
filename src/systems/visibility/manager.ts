@@ -41,6 +41,8 @@ import {
   type CutawaySettings,
   deckLevels,
   DEFAULT_CUTAWAY,
+  detailEffect,
+  type DetailLevel,
   type IsolationSet,
   isolationEffect,
   isolationScope,
@@ -105,6 +107,7 @@ export class VisualState {
   readonly sectionRange: { readonly min: number; readonly max: number };
   private current: CutawaySettings = DEFAULT_CUTAWAY;
   private selected: string | null = null;
+  private detailLevel: DetailLevel = 'full';
   private view: Vec2 | null = null;
   private iso: IsolationSet | null = null;
   private readonly shared: SharedUniforms = createSharedUniforms();
@@ -180,6 +183,17 @@ export class VisualState {
     this.selected = id;
     if (id === null && this.current.focusMode) this.current = { ...this.current, focusMode: false };
     this.apply();
+  }
+
+  /** Quality detail (Execution 8): `reduced` hides DETAIL_PARTS outside the selected room. */
+  setDetail(level: DetailLevel): void {
+    if (level === this.detailLevel) return;
+    this.detailLevel = level;
+    this.apply();
+  }
+
+  detail(): DetailLevel {
+    return this.detailLevel;
   }
 
   /** Fills (or clears, with null) an Ex7 layer slot; the layer is re-resolved on every mesh. */
@@ -299,6 +313,9 @@ export class VisualState {
     if (Array.isArray(mesh.material)) throw new Error(`${mesh.name}: multi-material meshes`);
     const base = this.ownBase(mesh.material, tag.kind, tag.id);
     mesh.material = base;
+    // Shadows (high quality tier, Execution 8) come only from what is drawn solid.
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
     const lines = mesh.children
       .filter((c): c is LineSegments => c instanceof LineSegments)
       .map((line) => {
@@ -330,6 +347,7 @@ export class VisualState {
       let r = memo.get(key);
       if (!r) {
         r = composeLayers({
+          quality: detailEffect(e.tag, this.detailLevel, this.selected),
           cutaway: cutawayEffect(e.tag, this.current),
           isolation: isolationEffect(e.tag, this.iso),
           overlay: this.slots.get('overlay')?.(e.tag),
@@ -341,6 +359,7 @@ export class VisualState {
       e.resolved = r;
       e.object.visible = !r.hidden;
       e.object.material = this.materials.variant(e.base, r);
+      e.object.customDepthMaterial = this.materials.depthVariant(e.base, r);
       for (const l of e.lines) l.object.material = this.materials.variant(l.base, r);
     }
     this.shared.uTardisClipY.value = this.current.sectionY ?? NO_SECTION_Y;
