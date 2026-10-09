@@ -2,7 +2,9 @@
 
 Branch: `claude/tardis-isometric-v1`. Plan: `docs/EXECUTION-PLAN.md`. Rules: `AGENTS.md`.
 
-Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 fast-forwarded `claude/tardis-isometric-v1` to that commit and committed on top, so the plan branch now carries Ex1–Ex8.
+**Status: v1 complete (Ex1–Ex9).** All nine executions of the plan are on this branch. There is no next execution; post-v1 work is listed under "Post-v1 backlog". No PR to `main` has been opened (only on the user's request).
+
+Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 fast-forwarded `claude/tardis-isometric-v1` to that commit and committed on top. That old branch is now only an ancestor of this one.
 
 ## Completed
 
@@ -40,7 +42,12 @@ Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 
   - Two lighting layers: readability (teal hemisphere, warm key light, the only shadow caster) and six diegetic point lights giving the hero rooms their identities (rotor teal, the Eye, the engine fire, library lamplight, the architecture orbs, the fuel rods).
   - Static merging per owner tag and material: the desktop overview went from 1265 draw calls (no shadows) to 243 without shadows and 409 with them.
   - Quality tiers (high / medium / low) with frame-time auto-downgrade, a dev-only stats overlay, and draw-call and triangle budgets in the hook.
-  - All four baselines regenerated intentionally (see Validation).
+  - All four baselines regenerated intentionally.
+- **Ex9:** final integration and full regression (integration and validation only).
+  - Full suite run on both projects, with every v1 DoD item and bible §F4 test checked against evidence (tables under Validation).
+  - **CI repaired.** CI had been red since Ex6 on the four desktop baselines alone. On the runner the canvas came out 1 px taller (1280×695 vs 694), because the toolbar title used `line-height: normal`, which follows the installed font. `src/style.css` now pins the title line boxes to the heights measured in the container (h1 20 px, subtitle 15 px; mobile h1 16 px). The canvas size no longer depends on fonts, and the local layout is unchanged, so no baseline was regenerated.
+  - New `e2e/integration.spec.ts` (both projects) covers the cross-system interactions: route × overlay × isolation × canvas selection × quality tier × reset, and section clip × canvas pick of a hidden room × route to console × focus mode × reset.
+  - README rewritten. §F4 table in `research/architecture-proposal.md` gains the Era row.
 
 ## Architecture / decisions
 
@@ -309,6 +316,7 @@ Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 
 - `tests/systems/visibility/{state,cutaway,manager}.test.ts`, `tests/ui/cutawayPanel.test.ts`
 - `tests/world/merge.test.ts`, `tests/systems/quality/tiers.test.ts`, `tests/scene/lighting.test.ts`, `tests/systems/visibility/materials.test.ts`, `tests/ui/statsOverlay.test.ts`, `e2e/perf.spec.ts`
 - `tests/navigation/{routes,routeView}.test.ts`, `tests/systems/research/overlay.test.ts`, `tests/systems/labels/labels.test.ts`, `tests/ui/{infoPanel,researchPanel,routePanel}.test.ts`
+- `README.md` (project, run/test, provenance caveats, attributions); `e2e/integration.spec.ts` (Ex9 cross-system journeys)
 - `e2e/helpers.ts` (`waitHero`, `press`, `setCutawayOpen`, `setPanelOpen`, `visibility`, `pickableRooms`, `route`, `routeHighlight`, `research`), `e2e/{scene,selection,mobile,console,overview,hero,cutaway,research,route}.spec.ts`, `e2e/baseline.css`, the snapshots `e2e/console.spec.ts-snapshots/console-room-desktop-linux.png`, `e2e/overview.spec.ts-snapshots/overview-desktop-linux.png` and `e2e/hero.spec.ts-snapshots/{library-region,power-core-region}-desktop-linux.png`, `playwright.config.ts`, `.github/workflows/ci.yml`
 - `research/`:
   - `sources.md`;
@@ -320,25 +328,47 @@ Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 
 
 ## Validation
 
+Ex9 run, in this container (Linux, SwiftShader):
+
+- **Checks:** `npm run lint`, `npm run typecheck` and `npm run build` pass, with no warnings. `npx prettier --check` passes on `src`, `tests`, `e2e` and the changed docs.
 - **Unit:** `npm test` passes: 332 tests in 33 files.
-  - New in Ex8:
-    - `tests/world/merge.test.ts`: merging per tag, material and visibility keeps triangles, bounds and outlines (one line set), leaves instanced meshes and ring groups' own merges alone, and leaves no mergeable siblings in the built scene; a raycast on a merged mesh names its owner; selection tints exactly the room's merged and instanced meshes; the overlay recolours instanced edge decor and the route tints exactly B37's meshes.
-    - `tests/systems/quality/tiers.test.ts`: tier ordering and budgets, `lowerTier`, pixel-ratio caps, `initialTier` (desktop high, touch or ≤ 720 px medium, weak hardware low), `?quality`/`?test`/`?stats` parsing, and the frame-time monitor (no downgrade at target, one per full slow window then a cooldown, tolerance of occasional slow frames, stalls ignored, restart).
-    - `tests/scene/lighting.test.ts`: each diegetic light inside its placed room, priority order, tier counts, overlay dimming, key-light shadows covering the map.
-    - `tests/systems/visibility/materials.test.ts`: motif uniforms, one shared surface program, matte overlay variants without accent or backlight, depth variants carrying ghost and cut.
-    - `tests/ui/statsOverlay.test.ts`; detail-layer cases in `state.test.ts`, surface-finish cases in `kit.test.ts`, and a manager case (shadow flags and depth materials on every mesh, reduced detail).
-  - Contract updates to existing tests: the build tests' raw mesh-count floors (> 300, > 100, > 50) became "every described tag is drawn" (merging cuts the counts); the glow tests now allow faint accents (self-lit means intensity ≥ `GLOW_INTENSITY`); `VISUAL_LAYERS` starts with `quality`.
-  - `npm run typecheck`, `npm run lint` and `npm run build` (no warnings) pass; `npx prettier --check src tests e2e` passes.
-- **E2E:** `npm run test:e2e` passes: 64 passed, 6 skipped. J8 is touch-only, so it skips on desktop; the baselines are desktop-only, so they skip on mobile. All journeys J1–J8 pass on both projects.
-  - New `e2e/perf.spec.ts` (both projects, reduced motion): the overview starts on the device tier (desktop high, mobile medium), with no auto-downgrade in test runs, and is within that tier's call and triangle budget with no console errors; every tier pinned through the hook stays within its budget and draws fewer calls than the tier above; the stats overlay is absent by default and shown with `?stats`; `?quality=low` pins the low tier. No frame rates are asserted.
-- **Visual baselines:** all four regenerated intentionally (`--update-snapshots=all`, desktop) and reviewed image by image:
-  - `overview`: teal console room with backlit roundels and the lit rotor, the fire-lit Eye and engine void, steel corridors, the warm library; geometry and framing unchanged.
-  - `console-room`: hex grating on the decks, roundels on the gallery and lower walls, orange rotor rings and console, dark ribs.
-  - `library-region`: the library's stacks and galleries (the warm stacks read red-brown through the cut wall), the B07–B09 run in cultural wood.
-  - `power-core-region`: rust hex plating, the Eye and fireball lighting their chambers, fuel rods, the violet portal.
-  - The old baselines still passed within `maxDiffPixelRatio` 0.01 (the map covers a fifth of the canvas and many shading changes fall under the pixel threshold), so they were rewritten explicitly.
-- **Performance** (desktop overview, `budget()`, SwiftShader): high 409 calls / 68,856 triangles (shadow pass included), medium 243 / 34,428, low 217 / 27,692; Ex7 was 1265 calls / 34,428 triangles without shadows. The overlay still adds no draw calls (J5).
-- **CI:** not observed running from this session (no GitHub Actions access here).
+- **E2E:** `npm run test:e2e` passes: 68 passed, 6 skipped.
+  - J8 is touch-only, so it skips on desktop; the four baselines are desktop-only, so they skip on mobile.
+  - J1–J8, `perf.spec.ts` and the new `integration.spec.ts` pass on both projects.
+  - All four baselines pass unchanged (no snapshot was regenerated in Ex9).
+- **Performance** (desktop overview, `budget()`): high 409 calls / 68,856 triangles (shadow pass included), medium 243 / 34,428, low 217 / 27,692. The overlay adds no draw calls (J5 and `integration.spec.ts`).
+- **CI** (`.github/workflows/ci.yml`):
+  - Runs 5–7 (Ex6–Ex8) failed on the four visual baselines only, with every other step green. The cause and fix are under Completed → Ex9.
+  - The Ex9 commit is the first with the fix. Its result is on the Actions run for that commit (written after this file); if the baselines still differ there, the remaining difference is rendering, not canvas size.
+
+### v1 Definition of Done (build plan items 1–12)
+
+| #   | Item                                                 | Evidence                                                                                                                                                                                                                                                  |
+| --- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Console room recognizable and structurally faithful  | `tests/world/console.test.ts` and `consoleBuild.test.ts` (18 ribs, three decks, stair bearings, exterior bridge, rings); proportions with basis in `research/room-dossiers/console-room.md`; `console-room` baseline; `e2e/console.spec.ts`               |
+| 2   | All Tier-1 spaces exist                              | `integrity.test.ts` "places exactly the v1 Tier-1 nodes"; `skeleton.test.ts` "describes every placed Tier-1 room"; J1 (every placed room rendered)                                                                                                        |
+| 3   | Every Tier-1 space physically connected              | `skeleton.test.ts`: the validator walks from C-M to every placed room with portals disabled, reaching ENG-01 only by B37, and agrees with the graph; `connectivity.test.ts` (each room has a route; no isolated room)                                     |
+| 4   | Structure understood from the isometric overview     | `overview` baseline (one connected structure; region tones descend from culture to the engine); `e2e/overview.spec.ts` selects every placed room by a real click, and C-LAD under the section clip                                                        |
+| 5   | Rotate, pan, zoom, select, focus                     | J2, J3 and J4 (`scene.spec.ts`, `selection.spec.ts`), on desktop and touch                                                                                                                                                                                |
+| 6   | Cutaway exposes deep spaces cleanly                  | J7 (`cutaway.spec.ts`: isolate the core and pick ENG-01, focus mode, section stops); `integration.spec.ts` (C-LAD picked under the section, then focused)                                                                                                 |
+| 7   | Routes through real corridors and stairs             | J6 (`route.spec.ts`); `routes.test.ts` (weights are walk-line lengths along the built paths); `integration.spec.ts`                                                                                                                                       |
+| 8   | Evidence metadata on every major room and connection | `integrity.test.ts` (each room has an evidence record; A–C claims cite sources; inferred or D/E edges carry inference metadata); `infoPanel.test.ts` (five separate axes)                                                                                 |
+| 9   | Inferred geometry visibly distinct from sourced      | J5 (`research.spec.ts`: the overlay recolours the model, with a legend); `overlay.test.ts`; B37 labelled INF-E (`overview.spec.ts`)                                                                                                                       |
+| 10  | Desktop smooth, mobile usable                        | `perf.spec.ts` (each tier within its call and triangle budget at the overview); J8 (`mobile.spec.ts`). Caveats: real devices were not measured (SwiftShader), and the low tier exceeds its triangle budget while a route is shown (Known incomplete work) |
+| 11  | Graph and connectivity tests pass                    | `connectivity.test.ts`, `graph.test.ts`, `skeleton.test.ts` and `validate.test.ts`, in every unit run                                                                                                                                                     |
+| 12  | Core interactions pass Playwright E2E                | J1–J8, both projects, 68 passed                                                                                                                                                                                                                           |
+
+### Bible §F4 acceptance tests
+
+| Check      | Evidence                                                                                                                                                                                                                                                                                                                                                                                              |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Data       | `integrity.test.ts`: the B01–B37 endpoints and anchors exist; each displayed room has a source-linked presence record                                                                                                                                                                                                                                                                                 |
+| Topology   | `connectivity.test.ts`: BFS from C-M with B28 disabled reaches all 19 placed nodes, and 34 of the full inventory (only X-01 to X-03 are not reached)                                                                                                                                                                                                                                                  |
+| Mesh       | `skeleton.test.ts`: the walk over the built floors through real openings reaches ENG-01 via B37, and loses it without B37                                                                                                                                                                                                                                                                             |
+| Spatial    | Validator rules `volume-overlap`, `dangling-end`, `path-supported`, `element-lands` and `surface-disjoint`, over the whole map with the hero rooms (`skeleton.test.ts`, `hero.test.ts`)                                                                                                                                                                                                               |
+| Visual     | Every v1 edge is built; there are no boxes or connector bars; every placed room is clickable in the overview or under the section clip (`overview.spec.ts`). The far leg of B37 is exposed by focusing an end room, checked by eye only                                                                                                                                                               |
+| Provenance | No metric units in runtime data. `integrity.test.ts` scans `src/data` (except the source notes in `evidence.ts`) and `console.test.ts` scans `src/world`. An Ex9 scan of all of `src` with `grep -rlE "\b[0-9]+(\.[0-9]+)?\s?(m\|cm\|mm\|metres?\|meters?\|ft\|feet)\b"` matches only `src/data/evidence.ts`: a lens focal length ("18 mm") and a rejected "~50 ft" lead, both quoted in source notes |
+| Era        | `integrity.test.ts`: no placed room is jettisoned or deleted, and the reservations stay unplaced. Restoring rooms is post-v1                                                                                                                                                                                                                                                                          |
 
 ## Known incomplete work
 
@@ -361,7 +391,12 @@ Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 
   - Home resets only the camera; "Reset cutaway" resets only the visibility.
   - On a 390-px toolbar, "Rooms", "Cutaway", "Research" and "Route" sit past the right edge until the row is scrolled.
 - **Performance and quality.**
-  - The budgets are calibrated on SwiftShader at 1280×800 and 390×844; real GPUs were not measured. The auto-downgrade thresholds (33.3 ms, 75% of 40 frames) are untuned on real devices, and it never upgrades.
+  - **Low-tier triangle budget is exceeded while a route is shown (found in Ex9, not fixed: outside the integration-only scope).**
+    - The route tube (`createRouteLine`, `TubeGeometry` sampled every `ROUTE_LINE_SAMPLE_NU` with 6 radial segments) adds about 8.5k triangles in one draw call.
+    - On the low tier, measured with `budget()`: the bare overview draws 217 calls / 27,692 triangles; with ENG-01 → C-M routed it draws 218 / 36,260, over the 36,000 budget. Selecting ENG-01 adds 864 more (its debris returns under reduced detail).
+    - Calls stay within budget. The only visible effect is the stats overlay's `.over-budget`. Auto-downgrade reads frame times, not budgets.
+    - Fix: sample the tube per straight segment (a few rings per leg) instead of at an even spacing.
+  - The budgets are calibrated on SwiftShader at 1280×800 and 390×844, at the bare overview; real GPUs were not measured. The auto-downgrade thresholds (33.3 ms, 75% of 40 frames) are untuned on real devices, and it never upgrades.
   - Frame time is measured between back-to-back rendered frames (CPU-side rAF intervals); GPU time is not measured.
   - Outlines are still one draw call per merged mesh; merging outlines across parts of an owner would need per-part cut state in the line shader.
   - Shadows are key-light only (high tier). Point lights cast none. Changing tier toggles lights and shadow maps, which recompiles the shared programs once.
@@ -373,8 +408,26 @@ Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 
 
 ## Next execution
 
-- **Ex9** (Final integration and full regression, High). Integration and validation only.
-  - Run lint, typecheck, unit, build and the full E2E suite (J1–J8 and `perf.spec.ts`, both projects, all four baselines).
-  - Exercise the cross-system interactions: cutaway × selection × routes × overlay × merged/instanced meshes × quality tiers × mobile.
-  - Walk the DoD checklist and bible §F4 acceptance tests with evidence; confirm zero metre values in runtime data and no floating rooms.
-  - README (what the project is, how to run and test, provenance caveats, attributions), final handoff with the post-v1 backlog, CI green on the branch. A PR to main only if the user asks.
+None: v1 is complete. A new plan should start from the backlog below and the "Known incomplete work" above.
+
+## Post-v1 backlog
+
+In rough priority order:
+
+1. **Tier 2 rooms** (build plan E9).
+   - Observatory, pool and residential rooms behind the closed H-02 and H-01 anchors (B10, B11 and the other reserved doors), and the Tier-2 doors on M-01.
+   - Each needs its edge in `connections.ts`, a layout box, a shell or hero description, and the validator and connectivity gates.
+2. **Route tube cost.** Bring a routed scene back inside the low-tier triangle budget (see Performance above), then assert the budget with a route shown.
+3. **Exploded view.** Separate the levels vertically for reading the stack, as an alternative to the section clip. It needs its own visual-state layer, and picks must follow the moved geometry.
+4. **GLB/KTX2 asset pipeline.** Optional authored meshes for the hero rooms, behind the same describe → build and mesh-tagging contracts (Blender export, KTX2 textures, lazy loading per room). v1 is procedural only.
+5. **Calibrated measurements.** Replace authored proportions only when a measurement chain exists (production drawings, measured set photography). The geometry tasks in `research/geometry-tasks.md` are all `blocked_access`. Keep NU as the unit, and record any scale factor as evidence, never as metres in runtime data.
+6. **Era and configuration states.**
+   - Restoring jettisoned or archived rooms as explicit configuration states (bible §F3.6, §F4 Era); the v1 data holds the stable snapshot only.
+   - The ARS `reconfiguring` door as a toggleable state.
+7. **Readability polish.**
+   - Label collision avoidance (region labels over console labels; dense anchor labels in Structure mode).
+   - Section caps on cut solids.
+   - Focus-mode exit that restores the camera.
+   - A route that frames the camera, and room-interior walk costs in routing.
+   - A toolbar overflow cue at 390 px.
+8. **Real-device performance.** Tune the auto-downgrade thresholds and budgets on real GPUs and phones; measure GPU time.

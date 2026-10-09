@@ -31,6 +31,7 @@ body {
 
 h1 {
   font-size: 1rem;
+  line-height: 20px;
   margin: 0;
 }
 
@@ -44,10 +45,12 @@ h1 {
   border-bottom: 1px solid var(--line);
 }
 
+/* Fixed line boxes: the canvas height (and so every visual baseline) must not depend on font metrics. */
 .title p {
   margin: 2px 0 0;
   color: var(--muted);
   font-size: 0.8rem;
+  line-height: 15px;
 }
 
 .view-controls,
@@ -481,6 +484,7 @@ select:focus-visible {
 
   h1 {
     font-size: 0.85rem;
+    line-height: 16px;
   }
 
   .title p {
