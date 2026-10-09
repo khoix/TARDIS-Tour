@@ -48,7 +48,10 @@ function label(text: string, className: string): CSS2DObject {
   return new CSS2DObject(el);
 }
 
-/** Element label: doors read as door labels, edges (the INF-E bypass) as edge labels. */
+/**
+ * Element label: feature labels as such; otherwise doors read as door labels and edges (the
+ * INF-E bypass) as edge labels.
+ */
 function elementLabel(element: StructureElement, text: string): CSS2DObject {
   const { primitive, tag } = element;
   const at =
@@ -61,14 +64,21 @@ function elementLabel(element: StructureElement, text: string): CSS2DObject {
         ] as const)
       : null);
   if (!at) throw new Error(`Label "${text}" on ${tag.id}:${tag.part} needs labelAt`);
-  const object = label(text, tag.kind === 'connection' ? 'edge-label' : 'door-label');
+  const object = label(
+    text,
+    element.labelKind === 'feature'
+      ? 'feature-label'
+      : tag.kind === 'connection'
+        ? 'edge-label'
+        : 'door-label',
+  );
   object.position.set(...at);
   return object;
 }
 
-/** Builds the description; rings are returned as spinners for the caller to animate. */
-export function buildStructure(d: StructureDescription): {
-  readonly structure: Omit<BuiltStructure, 'tick'>;
+/** Builds a description's elements and labels into a new group; rings come back as spinners. */
+function buildElements(d: StructureDescription): {
+  readonly root: Group;
   readonly spinners: readonly Spinner[];
 } {
   const root = new Group();
@@ -91,13 +101,28 @@ export function buildStructure(d: StructureDescription): {
     tag.position.set(...l.position);
     root.add(tag);
   }
+  return { root, spinners };
+}
 
-  const roomParts = new Map<string, Mesh[]>(d.roomIds.map((id) => [id, []]));
+/** Every mesh under `root` tagged `kind: 'room'`, by room id. */
+function partsByRoom(root: Group): Map<string, Mesh[]> {
+  const roomParts = new Map<string, Mesh[]>();
   root.traverse((o) => {
     if (o instanceof Mesh && isMeshTag(o.userData) && o.userData.kind === 'room') {
-      roomParts.get(o.userData.id)?.push(o);
+      roomParts.set(o.userData.id, [...(roomParts.get(o.userData.id) ?? []), o]);
     }
   });
+  return roomParts;
+}
+
+/** Builds the description; rings are returned as spinners for the caller to animate. */
+export function buildStructure(d: StructureDescription): {
+  readonly structure: Omit<BuiltStructure, 'tick'>;
+  readonly spinners: readonly Spinner[];
+} {
+  const { root, spinners } = buildElements(d);
+  const parts = partsByRoom(root);
+  const roomParts = new Map<string, Mesh[]>(d.roomIds.map((id) => [id, parts.get(id) ?? []]));
   const roomBounds = new Map<string, Bounds>();
   for (const id of d.roomIds) {
     const list = d.volumes.filter((v) => v.ownerId === id).map(volumeBounds);
@@ -122,4 +147,21 @@ export function buildStaticStructure(d: StructureDescription): BuiltStructure {
   const { structure, spinners } = buildStructure(d);
   if (spinners.length > 0) throw new Error(`${d.id} has animated parts; give it a tick`);
   return { ...structure, tick: () => false };
+}
+
+/**
+ * Detail added to rooms another structure already draws (the lazily loaded hero rooms,
+ * Execution 5). It replaces no room: its room-tagged meshes join those rooms' pickable parts.
+ */
+export interface BuiltDressing {
+  readonly root: Group;
+  readonly roomParts: ReadonlyMap<string, readonly Mesh[]>;
+}
+
+/** Builds a dressing description (no rooms of its own, no animated parts). */
+export function buildDressing(d: StructureDescription): BuiltDressing {
+  if (d.roomIds.length > 0) throw new Error(`${d.id} replaces rooms; build it as a structure`);
+  const { root, spinners } = buildElements(d);
+  if (spinners.length > 0) throw new Error(`${d.id} has animated parts`);
+  return { root, roomParts: partsByRoom(root) };
 }

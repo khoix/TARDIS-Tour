@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { expect, type Page, test } from '@playwright/test';
 import { CLOSED_DOOR_LABEL } from '../src/world/rooms/console/describe';
-import { openApp, pointOf, renderStats, selection, tap, waitIdle } from './helpers';
+import { openApp, pointOf, renderStats, selection, tap, waitHero, waitIdle } from './helpers';
 
 /** Resolves after `count` animation frames, so frame counters can be compared without sleeps. */
 async function animationFrames(page: Page, count: number): Promise<void> {
@@ -52,6 +52,7 @@ test('visual baseline: console room', async ({ page }, testInfo) => {
   // Reduced motion freezes the rotor rings at rest and makes the focus jump immediate.
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await openApp(page);
+  await waitHero(page);
   await page.evaluate(() => window.__tardis?.focusRegion('control-nexus'));
   await waitIdle(page);
   await expect(page.locator('#viewport canvas')).toHaveScreenshot('console-room.png', {

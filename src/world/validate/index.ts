@@ -406,9 +406,32 @@ export interface ReachOptions {
 }
 
 /**
+ * Surfaces of a room joined by one of its own stairs or ladders (the library's gallery
+ * ladders): every floor of that room the flight lands on, or the ladder ends within a step
+ * of, at either end. Room circulation never links another room's floors; edges are paths.
+ */
+function circulationLinks(d: StructureDescription): string[][] {
+  const groups: string[][] = [];
+  for (const e of d.elements) {
+    const p = e.primitive;
+    if (e.tag.kind !== 'room' || (p.type !== 'stairs' && p.type !== 'ladder')) continue;
+    const own = d.surfaces.filter((s) => s.ownerId === e.tag.id);
+    const at = (end: Vec3) =>
+      own.filter((s) =>
+        p.type === 'stairs' ? onSurface(s, end) : surfaceGap(s, end) <= STEP_GAP_NU + EPSILON_NU,
+      );
+    const bottom = at(p.bottom);
+    const top = at(p.top);
+    if (bottom.length > 0 && top.length > 0) groups.push([...bottom, ...top].map((s) => s.id));
+  }
+  return groups;
+}
+
+/**
  * Breadth-first search over walkable surfaces: a path links every surface it walks over (its
- * ends, its landings and the floors under its level legs). Portal paths are excluded
- * (research §F3.1). Returns the surfaces reached from `startId`.
+ * ends, its landings and the floors under its level legs), and a room's own stairs and
+ * ladders link the floors of that room they join. Portal paths are excluded (research
+ * §F3.1). Returns the surfaces reached from `startId`.
  */
 export function reachableSurfaces(
   d: StructureDescription,
@@ -420,6 +443,9 @@ export function reachableSurfaces(
     if (p.portal || options.excludeConnections?.has(p.connectionId)) continue;
     const walked = [...surfacesWalked(d, p)];
     for (const a of walked) for (const b of walked) if (a !== b) links.get(a)?.add(b);
+  }
+  for (const group of circulationLinks(d)) {
+    for (const a of group) for (const b of group) if (a !== b) links.get(a)?.add(b);
   }
   const seen = new Set<string>();
   if (!links.has(startId)) return seen;

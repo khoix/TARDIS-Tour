@@ -62,3 +62,9 @@ for (const group of groupPlacedRooms(ROOMS)) {
 required<HTMLButtonElement>('#home-view').addEventListener('click', () => viewer.resetView());
 
 if (testHookEnabled(window.location.search, import.meta.env.DEV)) installTestHook(viewer);
+
+// Hero detail loads in its own chunk once the greybox shells have given a usable first view.
+void viewer
+  .firstFrame()
+  .then(() => import('./world/rooms/hero/heroRooms'))
+  .then(({ buildHeroRooms }) => viewer.addDressing(buildHeroRooms()));

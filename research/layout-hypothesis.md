@@ -12,7 +12,9 @@ Execution 2 placed crude boxes. Execution 3 replaced the control-nexus boxes wit
 - The **chamber** (M-02) is an octagonal node chamber with a door on each axis face.
 - **Room** shells (L-01, S-01, ARS-01, E-A, E-01, E-V, ENG-01) are walls with door openings. They are walked on the floor, on a catwalk (E-01), or on a gallery ringing the walls (ENG-01).
 
-Every box equals the bounding box of its room's description volumes, and every topology anchor is placed on one of its faces (tested). Anchors that no v1 edge uses are reserved Tier-2 doors and are built closed. Hero detail comes in Execution 5.
+Every box equals the bounding box of its room's description volumes, and every topology anchor is placed on one of its faces (tested). Anchors that no v1 edge uses are reserved Tier-2 doors and are built closed.
+
+**Execution 5 (hero detail) changes no placement.** Every `LAYOUT` box, `ROOM_SHELLS` door and anchor is unchanged, and no room volume changed, so nothing here was re-placed. Hero detail (`src/world/rooms/hero/`) is drawn inside each box and clear of every walk line (tested). The only new walkable floors are the three L-01 galleries at Y 12, 17 and 22 (default `floorCount` 4, 5-NU storeys), inside the library box. Each is reached by its own ladder from the library floor, so the validator counts a room's own ladders and stairs as linking that room's floors. They never link two rooms; edges stay paths. Feature placements are authored; the known vs inferred list per room is in `research/room-dossiers/journey-interior.md`.
 
 ## Constraints applied
 

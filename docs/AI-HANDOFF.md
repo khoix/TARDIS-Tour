@@ -2,7 +2,7 @@
 
 Branch: `claude/tardis-isometric-v1`. Plan: `docs/EXECUTION-PLAN.md`. Rules: `AGENTS.md`.
 
-Execution 4 was committed on `claude/run-execution-4-d6v0k1`, the branch that session's harness assigned. That branch is the plan branch's Ex3 tip plus the Ex4 commit, so `claude/tardis-isometric-v1` can fast-forward to it.
+Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 fast-forwarded `claude/tardis-isometric-v1` to that commit and committed on top, so the plan branch now carries Ex1–Ex5.
 
 ## Completed
 
@@ -18,6 +18,11 @@ Execution 4 was committed on `claude/run-execution-4-d6v0k1`, the branch that se
   - Ceilings hidden in the map view, and region tones that read from inhabited to industrial with depth.
   - The validator now runs over the whole map (new rules below). No box or connector bar is left in the scene.
   - New `overview` baseline.
+- **Ex5:** the Journey hero spaces.
+  - S-01, L-01, ARS-01, F-01, E-A, E-01, E-V and ENG-01 are recognizable describe → build rooms inside their unchanged boxes and anchors.
+  - Each feature parameter has an evidence basis; the ARS door marker is generated from data.
+  - The hero detail loads lazily, in its own chunk, after the first greybox frame.
+  - New baselines: `library-region` and `power-core-region`. `overview` and `console-room` were regenerated (authorized).
 
 ## Architecture / decisions
 
@@ -62,8 +67,32 @@ Execution 4 was committed on `claude/run-execution-4-d6v0k1`, the branch that se
     - Element labels use class `edge-label` for connection-tagged elements and `door-label` otherwise.
     - Kit builders live in `src/world/kit/index.ts`. `MaterialCache` gives one material per (tagged node, colour), so highlights never bleed between rooms or edges. `partColor(part, tone)` reads `TONE_COLORS` (cultural warm, maintenance steel, power-core dark rust), then falls back to `PART_COLORS`. Plates, boxes and sweeps get hard-edge outlines, which are not pickable.
   - `buildPrototypeScene(rooms, connections, layout, structures)` draws a structure's rooms and edges instead of boxes and connector bars. `src/main.ts` passes `[buildConsoleRoom(), buildSkeleton()]`, which covers every placed room and v1 edge, so the box view is only a fallback now.
+- **Hero rooms (Ex5, `src/world/rooms/hero/`).**
+  - `params.ts`: `HERO_PARAMS` per room and `HERO_PARAM_NOTES`, a `ParamNote {basis: verified|order|design, sourceIds, note}` for every parameter (the console's type).
+    - L-01 `floorCount` defaults to 4 storeys of 5 NU: a design choice (the sources conflict at five vs six [S28]/[S05]; rooms.ts keeps `floorCount = null`). It is the most that fit the box, and a taller value throws.
+  - `describe.ts`:
+    - `describeHeroRoom(id, params?)` returns `HeroDressing {roomId, surfaces, elements}`. It adds no volumes, anchors or paths.
+    - `describeHeroRooms()` is one `StructureDescription` with `roomIds: []`: it replaces no room, and its meshes join the greybox shells.
+    - `describeJourneyMap()` is the Tier-1 map merged with the hero rooms. It is the full structure the validator checks.
+    - `HERO_ROOM_IDS`, `RECONFIGURING_LABEL`, `PORTAL_LABEL`.
+  - Features:
+    - S-01: shelving on the door-free walls with mementos, the cot with bars, and the toy TARDIS.
+    - L-01: stacks on all walls, through `floorCount` storeys, with the doorway bays left empty. A `galleryRing` per upper storey (surfaces `L-01.gallery{k}.deck`), each with a ladder from the floor 0.4 NU off its inner edge. The encyclopedia stand.
+    - ARS-01: plinth, trunk, 3 × 6 sloped branch struts, and glowing orbs on hangers. Every door whose edge has `observedStates` containing `reconfiguring` (only B18) gets a glowing frame tagged to that edge, labelled `RECONFIGURING_LABEL`.
+    - F-01: glowing rods hang either side of the walk line with 2 NU of headroom, and stand between the fuel-cell rows on the deck.
+    - E-A: bulkhead frames on both doors, sweep-built locking wheels, and seal strips.
+    - E-01: the core is a 7-slice disc sphere 7 NU below the catwalk, with a containment ring, struts and 8 frozen flares. Two closed hex blind doorways on brackets sit at catwalk level on the unused `+x` and `+z` walls.
+    - E-V: a violet frame, floor chevrons and `PORTAL_LABEL`, all tagged `connection B28` (the edge's provenance), so E-V gains no room parts.
+    - ENG-01: the fireball (disc sphere) 11 NU below the gallery, a shock ring, and 72 instanced debris fragments on a deterministic golden-angle burst, inside the void. The engine plinth and struts.
+  - `heroRooms.ts` is the lazy entry (`buildHeroRooms()`). `src/main.ts` imports it with `import()` after `viewer.firstFrame()`, then calls `viewer.addDressing()`. Vite emits `assets/heroRooms-*.js` (about 13 kB).
+  - `build.ts#buildDressing(d)` builds a description with `roomIds: []` and returns `BuiltDressing {root, roomParts}`. `buildStructure` and `buildDressing` share `buildElements`.
+  - `PrototypeScene.attach(dressing)` adds the root and merges the parts into `roomParts`. It throws for rooms not in the scene, and bounds do not change.
+  - `Viewer` gains `firstFrame()`, `addDressing()` (it extends pickables and re-applies the highlight) and `dressings()`.
+  - Test hook: `heroReady`.
+  - Labels: `StructureElement.labelKind?: 'feature'` gives class `feature-label`. Door and edge labels are unchanged, so the console's two door labels and the B37 edge label stay unique.
 - **Contract 2: mesh tagging.** Every world mesh has `userData: MeshTag {kind: 'room'|'connection', id, part, evidenceClass}`.
-  - `part` is one of `MESH_PARTS` (`volume` and `connector` are the box view's stand-ins). Ex4 adds `ceiling`, `catwalk`, `shaft`, `panel`, `fuel-cell` and `portal`. Support-rib frames are instanced `rib` parts; roundel and hex panels are instanced `panel` parts.
+  - `part` is one of `MESH_PARTS` (`volume` and `connector` are the box view's stand-ins). Ex4 adds `ceiling`, `catwalk`, `shaft`, `panel`, `fuel-cell` and `portal`. Ex5 adds `stack`, `machine`, `prop`, `debris`, `glow` and `rod`.
+  - `GLOW_PARTS` (`glow`, `rod`, `portal`) are self-lit. `MaterialCache` keys materials by glow as well, sets the emissive to the part colour at `GLOW_INTENSITY` 0.85, and records `userData.restEmissive`. The viewer's highlight restores `restEmissive(material)` on deselect instead of black. Support-rib frames are instanced `rib` parts; roundel and hex panels are instanced `panel` parts.
   - `evidenceClass` is `sourced|reconstructed|inferred|speculative`. It describes how the part's existence and form are known, never its dimensions (all dimensions are `normalized_authored`).
     - Edge parts (passages, thresholds, the portal) use `evidenceClassOfProvenance` (TV-S/TV-M/OFF/PROD → sourced, REC/EXP → reconstructed, INF-D → inferred, INF-E → speculative).
     - Shell rooms use `evidenceClassOfPresence`, except E-V's enclosure (inferred), the fuel-cell deck (inferred), the fuel cells (sourced) and ENG-01's gallery (inferred).
@@ -111,6 +140,7 @@ Execution 4 was committed on `claude/run-execution-4-d6v0k1`, the branch that se
   - `dangling-end` (Ex4): every box opening meets another box face. That face is either a matching opening, or a room with an open anchor within `DOOR_REACH_NU = 1`.
   - `surface-disjoint` (Ex4): a surface's shapes touch.
   - `walkable-unreachable`: BFS from the start surface with portals disabled. A path links every surface it walks over: its ends, its landings, and the floors under its level legs.
+    - Ex5 adds **room circulation**: a room-tagged `stairs` or `ladder` element links the floors of that same room at its two ends (on the surface for stairs, within a step for ladders). It never links two rooms, so room reachability and graph agreement are unchanged (fixture-tested). The L-01 galleries depend on it.
   - `graph-mesh-mismatch` (Ex4): `checkGraphAgreement(d, start, graphReached, {excludeConnections})` compares the rooms the graph reaches with `reachableRooms(d, start, …)`. It is run in `tests/world/skeleton.test.ts`, with and without B37.
 - **Console room (`src/world/rooms/console/`).** Unchanged in Ex4 apart from the `ownerId` rename.
   - `params.ts`: `CONSOLE_PARAMS` (NU), plus a `CONSOLE_PARAM_NOTES` basis (verified/order/design) for every parameter.
@@ -164,11 +194,12 @@ Execution 4 was committed on `claude/run-execution-4-d6v0k1`, the branch that se
 - `src/scene/{viewer,prototypeScene,topology,testHook}.ts`, `src/scene/camera/isometric.ts`
 - `src/world/structure.ts` (both contracts), `src/world/build.ts`, `src/world/kit/{index,modules}.ts`, `src/world/validate/{geometry,index}.ts`
 - `src/world/rooms/console/{params,describe,build}.ts`, `src/world/rooms/shells.ts`, `src/world/corridors/describe.ts`, `src/world/skeleton.ts`
+- `src/world/rooms/hero/{params,describe,heroRooms}.ts`
 - `src/ui/{roomIndex,infoPanel}.ts`, `src/main.ts`, `index.html`, `src/style.css`
-- `e2e/helpers.ts`, `e2e/{scene,selection,mobile,console,overview}.spec.ts`, `e2e/baseline.css`, `e2e/console.spec.ts-snapshots/console-room-desktop-linux.png`, `e2e/overview.spec.ts-snapshots/overview-desktop-linux.png`, `playwright.config.ts`, `.github/workflows/ci.yml`
+- `e2e/helpers.ts` (`waitHero`), `e2e/{scene,selection,mobile,console,overview,hero}.spec.ts`, `e2e/baseline.css`, the snapshots `e2e/console.spec.ts-snapshots/console-room-desktop-linux.png`, `e2e/overview.spec.ts-snapshots/overview-desktop-linux.png` and `e2e/hero.spec.ts-snapshots/{library-region,power-core-region}-desktop-linux.png`, `playwright.config.ts`, `.github/workflows/ci.yml`
 - `research/`:
   - `sources.md`;
-  - `room-dossiers/*` (the console dossier carries the Ex3 proportions table);
+  - `room-dossiers/*` (the console dossier carries the Ex3 proportions table; `journey-interior.md` carries the Ex5 known vs inferred feature table);
   - `connection-decisions.md` (with Ex4's built paths);
   - `architecture-proposal.md` (§F4 acceptance mapping);
   - `geometry-tasks.md` (all `blocked_access`);
@@ -176,42 +207,41 @@ Execution 4 was committed on `claude/run-execution-4-d6v0k1`, the branch that se
 
 ## Validation
 
-- **Unit:** `npm test` passes: 194 tests in 16 files.
-  - New in Ex4:
-    - `tests/world/skeleton.test.ts` runs over the merged Tier-1 map. It covers:
+- **Unit:** `npm test` passes: 222 tests in 18 files.
+  - New in Ex5:
+    - `tests/world/hero.test.ts` runs over `describeJourneyMap()` (the Tier-1 map plus hero detail). It covers:
       - the validator passes with portals disabled;
-      - one path per v1 edge, each ending on both of its open anchors;
-      - exact topology anchors, with unused ones closed;
-      - layout boxes equal the volume AABBs;
-      - contiguous, supported segments with no midair stairs, ladders or shafts;
-      - no overlaps and no dangling ends;
-      - the walk from C-M reaches every placed room, and ENG-01 only via B37;
-      - graph/mesh agreement with and without B37;
-      - every walkable edge links both rooms' floors;
-      - B37 enclosed and labelled;
-      - B28 inside E-V and out of the walk;
-      - F-01 beneath the fuel cells;
-      - the inhabited→industrial descent;
-      - ceilings on every piece;
-      - every kit piece used;
-      - only decorative repeats instanced;
-      - valid tags.
-    - `tests/world/kit.test.ts`: each kit piece, the sweep shear, polygon sectors, instanced decor and tones.
-    - `tests/world/skeletonBuild.test.ts` (happy-dom): full tags; non-console rooms as their own meshes; ceilings hidden and nothing else; instancing; no shared materials; one INF-E label; only described parts built; no box or bar left in the scene.
-    - `tests/data/paths.test.ts`: paths cover exactly the 14 non-console v1 edges with axis-aligned legs.
-    - `tests/data/layout.test.ts` (rewritten for Ex4) and its room-shell checks.
-    - `tests/world/validate.test.ts` gained fixtures for the new rules: a floor gap wider than a step (a door sill passes), a sloped leg without stairs, a flight steeper than 45°, a vertical leg without a ladder or out of reach, stairs landing in midair, three kinds of dangling end, a disjoint surface, and graph/mesh mismatches in both directions.
-  - `npm run typecheck`, `npm run lint`, `npm run build` (no warnings) and `npx prettier --check .` pass.
-- **E2E:** `npm run test:e2e` passes: 32 passed, 4 skipped. J8 is touch-only, so it skips on desktop; the baselines are desktop-only, so they skip on mobile.
-  - J1–J4, J8 and `e2e/console.spec.ts` as before.
-  - New `e2e/overview.spec.ts`:
-    - every placed room except C-LAD is selected through a real canvas click or tap at its hook point, with `select(null)` between rooms and the camera unchanged;
-    - C-LAD has no canvas point, and is selected from the room index;
-    - the B37 `.edge-label`;
-    - the `overview` baseline.
+      - the hero rooms add no volumes, anchors or paths, and the map's volumes, anchors and paths equal the Ex4 map's (so the boxes still equal the AABBs);
+      - each hero room's anchors stand on their unchanged surfaces (the E-01 catwalk at −28, the ENG-01 gallery at −35, the F-01 floor at −28, the `F-01.fuel-cells` volume);
+      - the walk from C-M reaches every room, ENG-01 only via B37, and the graph agrees with and without B37;
+      - every hero element lies inside its room's layout box;
+      - no hero solid stands in the walker's column (0.05–1.9 NU) anywhere along a path or at an anchor in a hero room;
+      - valid tags, with edge-tagged parts taking the edge's provenance;
+      - only decorative dressing is instanced;
+      - every parameter has a note with resolvable sources;
+      - `floorCount` is documented as a design choice (not 5 or 6), and floorCounts 1–4 each give `floorCount − 1` galleries and ladders and pass the validator, while 5 throws;
+      - the per-room feature checks, including B18 as the only reconfiguring edge, marked once, and B28's portal marking.
+    - `tests/world/heroBuild.test.ts` (happy-dom):
+      - full tags, and only described parts built;
+      - parts go to exactly the dressed rooms (all but E-V, whose marking is B28's);
+      - nothing hidden;
+      - only glow parts self-lit;
+      - exactly two feature labels, and no door or edge labels;
+      - `buildDressing` refuses `roomIds`;
+      - `attach` merges parts without moving bounds, and throws for rooms not in the scene.
+    - `tests/world/kit.test.ts`: glow materials, their rest emissive, and matte separation.
+    - `tests/world/validate.test.ts`: room-circulation fixtures. A room's own ladder within a step reaches its gallery. Another room's ladder, or one out of reach, does not. Circulation never changes the rooms reached.
+  - `npm run typecheck`, `npm run lint` and `npm run build` (no warnings) pass. `npx prettier --check .` passes.
+- **E2E:** `npm run test:e2e` passes: 40 passed, 6 skipped, in about 2.2 min. J8 is touch-only, so it skips on desktop; the baselines are desktop-only, so they skip on mobile.
+  - J1–J4, J8, `console.spec.ts` and `overview.spec.ts` as before. Their baselines now wait for `heroReady`.
+  - New `e2e/hero.spec.ts`:
+    - lazy loading: the `heroRooms-*.js` request is held. The first frame renders, `heroReady` is false, and L-01 is selected on the canvas from its greybox. On release, `heroReady` turns true, the selection survives, and there are no page errors.
+    - Each hero room is selected by a real canvas click or tap, and the panel shows its name, every evidence record by grade, and the four axis rows.
+    - The two `.feature-label`s.
+    - The `library-region` (focusRegion `cultural`) and `power-core-region` baselines.
 - **Visual baselines (desktop, Chromium 1194 + SwiftShader in the cloud container):**
-  - `overview` is new in Ex4.
-  - `console-room` was regenerated in Ex4. Its control-nexus framing shows the neighbouring rooms, which changed from boxes to built structure. The console pixels were compared and are unchanged.
+  - `library-region` and `power-core-region` are new in Ex5.
+  - `overview` and `console-room` were regenerated in Ex5 (authorized by the user). The old baselines still passed within the 1% tolerance. A pixel diff of old against new changed 0.22% and 0.81% of pixels, all in hero rooms (library top, ARS crown and orbs, S-01, F-01 rods, the E-V marking). The console pixels are unchanged.
 - **CI:** not observed running from this session (no GitHub Actions access here). If CI's Chromium renders a baseline differently beyond the 1% tolerance, regenerate it on Linux only, with authorization.
 
 ## Known incomplete work
@@ -220,22 +250,22 @@ Execution 4 was committed on `claude/run-execution-4-d6v0k1`, the branch that se
   - `e2e/overview.spec.ts` lists it in `HIDDEN_IN_OVERVIEW`, and fails if it becomes visible ("move it to the canvas test").
   - The Ex6 elevation clip must make it clickable on the canvas, then move it into the canvas test.
   - The B06 ladder and the last (westward) leg of B37, behind the Eye chamber, are also occluded in the overview.
-- **Performance:** the overview draws about 924 calls and about 17.7k triangles (`renderStats`).
-  - Walls, floors, stairs and door frames are separate meshes per piece; only rib frames and panels are instanced.
-  - The E2E suite now takes about 1.3 min on SwiftShader.
+- **Deep hero detail is occluded by full-height walls.** In the default (35°) region framing, you see only the tops of the E-01 core and flares, the ENG-01 fireball and debris, and the ARS orbs. `power-core-region` therefore shows the F-01 rods and the E-V marking, but not the Eye or the explosion. The Ex6 wall fade, section clip and focus mode should expose them. If that changes the default view, regenerate the baselines.
+- **Performance:** with the hero rooms, the overview draws 1265 calls and 34.4k triangles (`renderStats`, desktop), up from about 924 and 17.7k in Ex4.
+  - Each non-instanced element is its own mesh plus an outline.
+  - Hero repeats (shelves, books, orbs, rods, debris) are instanced.
   - Merging and batching are Ex8 performance work.
+- Library ladders rise from the floor beside the galleries' inner railings. The railings are not broken where a ladder arrives; this is cosmetic.
 - Region labels overlap in the overview. "POWER CORE" sits over the console's lower labels, and "CONTROL NEXUS" over a reported-door label. Progressive labels are Ex7.
 - Tier-2 doors are closed thresholds only (no Tier-2 rooms). The kit is axis-aligned only, so paths must use axis-aligned legs (tested).
-- Hero detail is not built (Ex5). Shells are plain greybox: no stacks, ARS tree, Eye, or frozen explosion.
-- Region tones are greybox shades, not materials (Ex8) or evidence colours (Ex7).
+- Region tones and glow are greybox shades, not materials (Ex8) or evidence colours (Ex7). Glow is the emissive on `GLOW_PARTS`, restored after selection by `restEmissive`. Ex6's visual-state manager should own this override alongside the selection highlight.
 
 ## Next execution
 
-- **Ex5** (Journey hero spaces, High): S-01, L-01, ARS-01, F-01, E-A, E-01, E-V and ENG-01 as recognizable describe → build rooms.
-  - Keep `LAYOUT` boxes and `ROOM_SHELLS` door placements fixed: anchors must not move. The skeleton tests check anchors against the topology and boxes against the volume AABBs. If a volume must change, re-run the validator and record it in `research/layout-hypothesis.md`.
-  - Keep the walk surfaces the paths land on:
-    - the E-01 catwalk at −28;
-    - the ENG-01 gallery at −35;
-    - the F-01 tunnel floor at −28, with the fuel-cell deck volume `F-01.fuel-cells` above it.
-  - Hero builders are lazy-loaded (dynamic import) after the first usable view, with the greybox shells shown first.
-  - New baselines: `library-region` and `power-core-region`. If hero detail shows in the `overview` or `console-room` framing, those baselines change and need authorization to regenerate.
+- **Ex6** (Cutaway and visibility system, Extra High): `src/systems/visibility/`.
+  - Build a visual-state manager with composable per-mesh layers: selection, cutaway, isolation, and slots for overlay and routes. It should own material overrides.
+    - The viewer's `setHighlight` and the glow rest emissive (`restEmissive`) are the current overrides it must absorb.
+  - Visibility features: wall fade, ceiling hide (`HIDDEN_BY_DEFAULT`), an elevation section clip, region/level isolation that ghosts context, and focus mode.
+  - Picks must skip hidden, clipped and faded geometry. Picking today raycasts `roomParts`, which includes the lazily added hero meshes (`Viewer.addDressing` extends pickables).
+  - E2E J7: isolate the core, then select ENG-01 on the canvas; the elevation clip makes C-LAD clickable (then move it out of `HIDDEN_IN_OVERVIEW`); reset restores defaults.
+  - Re-check `power-core-region` once deep hero detail can be exposed.

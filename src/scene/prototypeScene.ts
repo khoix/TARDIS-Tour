@@ -17,7 +17,7 @@ import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import type { RoomTransform } from '../data/layout';
 import type { Connection, RegionId, RoomNode } from '../data/types';
 import { REGION_LABELS } from '../ui/roomIndex';
-import type { BuiltStructure } from '../world/build';
+import type { BuiltDressing, BuiltStructure } from '../world/build';
 import {
   evidenceClassOfPresence,
   evidenceClassOfProvenance,
@@ -51,6 +51,12 @@ export interface PrototypeScene {
   readonly overview: Bounds;
   /** Advances animated structures; returns true when the frame needs re-rendering. */
   tick(nowMs: number): boolean;
+  /**
+   * Adds detail to rooms already in the scene (the lazily loaded hero rooms): its root joins
+   * the scene and its meshes join their rooms' pickable parts. Bounds do not change, because
+   * dressing stays inside each room's volumes. Returns the meshes added.
+   */
+  attach(dressing: BuiltDressing): readonly Mesh[];
 }
 
 function label(text: string, className: string): CSS2DObject {
@@ -188,6 +194,17 @@ export function buildPrototypeScene(
       let moved = false;
       for (const s of structures) moved = s.tick(nowMs) || moved;
       return moved;
+    },
+    attach(dressing) {
+      const added: Mesh[] = [];
+      for (const [id, parts] of dressing.roomParts) {
+        const existing = roomParts.get(id);
+        if (!existing) throw new Error(`Dressing for ${id}, which is not in the scene`);
+        roomParts.set(id, [...existing, ...parts]);
+        added.push(...parts);
+      }
+      root.add(dressing.root);
+      return added;
     },
   };
 }

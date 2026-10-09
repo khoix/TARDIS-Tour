@@ -10,6 +10,8 @@ import type { CameraState, Viewer } from './viewer';
 export interface TardisTestHook {
   /** True once the first frame with the full topology has rendered. */
   readonly ready: boolean;
+  /** True once the lazily loaded hero rooms (Execution 5) are in the scene. */
+  readonly heroReady: boolean;
   camera(): CameraState;
   /** True while a focus/reset camera transition is running. */
   animating(): boolean;
@@ -39,6 +41,9 @@ export function installTestHook(viewer: Viewer): TardisTestHook {
   const hook: TardisTestHook = {
     get ready() {
       return viewer.renderStats().frames > 0;
+    },
+    get heroReady() {
+      return viewer.dressings() > 0;
     },
     camera: () => viewer.cameraState(),
     animating: () => viewer.isAnimating(),

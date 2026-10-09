@@ -7,7 +7,8 @@
  * - L-01, S-01, ARS-01, E-A, E-01, E-V and ENG-01 as shells with their doors cut in the walls,
  *   E-01 walked on a catwalk joining its doors and ENG-01 on a gallery ringing its walls.
  * Every topology anchor of these rooms is placed; an anchor no v1 edge uses is closed.
- * Hero detail (stacks, the ARS tree, the Eye, the frozen explosion) is Execution 5.
+ * Hero detail (stacks, the ARS tree, the Eye, the frozen explosion) is added on top by
+ * src/world/rooms/hero/ (Execution 5), which leaves these shells and anchors unchanged.
  */
 
 import { V1_CONNECTIONS } from '../../data/connections';
@@ -125,7 +126,7 @@ function boundsOf(roomId: string): Bounds {
 }
 
 /** Centre of a door's sill on the plane of its face, at height `y`. */
-function doorCentre(b: Bounds, door: DoorPlacement, y: number): Vec3 {
+export function doorCentre(b: Bounds, door: DoorPlacement, y: number): Vec3 {
   const cx = (b.min[0] + b.max[0]) / 2;
   const cz = (b.min[2] + b.max[2]) / 2;
   switch (door.side) {

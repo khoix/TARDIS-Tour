@@ -18,6 +18,11 @@ export async function openApp(page: Page): Promise<string[]> {
   return errors;
 }
 
+/** Waits until the lazily loaded hero rooms (Execution 5) are in the scene. */
+export async function waitHero(page: Page): Promise<void> {
+  await page.waitForFunction(() => window.__tardis?.heroReady === true);
+}
+
 /** Throws inside the page when the hook is missing, so failures name the real cause. */
 export async function camera(page: Page): Promise<CameraState> {
   return page.evaluate(() => {

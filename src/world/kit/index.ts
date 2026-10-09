@@ -28,6 +28,7 @@ import type { RegionId } from '../../data/types';
 import {
   azimuthVector,
   type BoxPrimitive,
+  GLOW_PARTS,
   type DoorwayPrimitive,
   type InstancesPrimitive,
   type KitPrimitive,
@@ -65,6 +66,12 @@ export const PART_COLORS: Readonly<Record<Exclude<MeshPart, 'volume'>, number>> 
   panel: 0x6fb6c8,
   'fuel-cell': 0xe0a040,
   portal: 0xc04fd8,
+  stack: 0x6e4a2c,
+  machine: 0x4a5a60,
+  prop: 0x9a7a5a,
+  debris: 0x8a4a30,
+  glow: 0xffd27a,
+  rod: 0xff8a3a,
 };
 
 /**
@@ -83,6 +90,9 @@ export const TONE_COLORS: Readonly<Partial<Record<RegionId, Partial<Record<MeshP
     stairs: 0xb39a76,
     railing: 0xb39a76,
     catwalk: 0xa08560,
+    stack: 0x6e4a2c,
+    prop: 0x8a3a2a,
+    machine: 0x7a6a50,
   },
   maintenance: {
     floor: 0x5f6e74,
@@ -95,6 +105,10 @@ export const TONE_COLORS: Readonly<Partial<Record<RegionId, Partial<Record<MeshP
     railing: 0x98a6ab,
     catwalk: 0x84949a,
     shaft: 0x36434a,
+    stack: 0x5d6a70,
+    prop: 0xa08a6a,
+    machine: 0x48565c,
+    glow: 0xffe6a0,
   },
   'power-core': {
     floor: 0x6f3f31,
@@ -107,6 +121,10 @@ export const TONE_COLORS: Readonly<Partial<Record<RegionId, Partial<Record<MeshP
     railing: 0xa2684f,
     catwalk: 0xa86a4e,
     shaft: 0x43261f,
+    machine: 0x3a2622,
+    debris: 0x9a5030,
+    glow: 0xffa040,
+    rod: 0xff7a30,
   },
 };
 
@@ -122,18 +140,37 @@ const CIRCLE_SEGMENTS = 48;
 const RAIL_SECTION = 0.1;
 const POST_SPACING_DEG = 20;
 
+/** Self-lit strength of {@link GLOW_PARTS}; the emissive colour is the part colour. */
+export const GLOW_INTENSITY = 0.85;
+
+/** Emissive a material returns to when its room is deselected (`userData.restEmissive`). */
+export interface RestEmissive {
+  readonly color: number;
+  readonly intensity: number;
+}
+
+export function restEmissive(material: MeshStandardMaterial): RestEmissive {
+  return (material.userData.restEmissive as RestEmissive | undefined) ?? { color: 0, intensity: 1 };
+}
+
 /**
- * One material per (tagged node, colour), so highlighting a room never tints another
- * room's meshes.
+ * One material per (tagged node, colour, glow), so highlighting a room never tints another
+ * room's meshes. Glow parts are self-lit and record that as their rest emissive.
  */
 export class MaterialCache {
   private readonly cache = new Map<string, MeshStandardMaterial>();
 
   get(tag: MeshTag, color: number): MeshStandardMaterial {
-    const key = `${tag.kind}:${tag.id}:${color}`;
+    const glow = GLOW_PARTS.has(tag.part);
+    const key = `${tag.kind}:${tag.id}:${color}:${glow ? 'glow' : 'matte'}`;
     let m = this.cache.get(key);
     if (!m) {
       m = new MeshStandardMaterial({ color, roughness: 0.75, metalness: 0.15, flatShading: true });
+      if (glow) {
+        m.emissive.setHex(color);
+        m.emissiveIntensity = GLOW_INTENSITY;
+        m.userData.restEmissive = { color, intensity: GLOW_INTENSITY } satisfies RestEmissive;
+      }
       this.cache.set(key, m);
     }
     return m;

@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import { PLACED_ROOMS } from '../src/data/rooms';
-import { camera, openApp, pointOf, selection, tap, waitIdle } from './helpers';
+import { camera, openApp, pointOf, selection, tap, waitHero, waitIdle } from './helpers';
 
 /**
  * Placed rooms with no exposed canvas pixel in the default overview, and why. They are
@@ -56,6 +56,7 @@ test('visual baseline: overview', async ({ page }, testInfo) => {
   // Reduced motion freezes the rotor rings at rest.
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await openApp(page);
+  await waitHero(page);
   await waitIdle(page);
   await expect(page.locator('#viewport canvas')).toHaveScreenshot('overview.png', {
     stylePath: fileURLToPath(new URL('./baseline.css', import.meta.url)),

@@ -31,6 +31,8 @@ import {
   MIN_ZOOM,
   orthoFrustum,
 } from './camera/isometric';
+import type { BuiltDressing } from '../world/build';
+import { restEmissive } from '../world/kit';
 import type { MeshTag } from '../world/structure';
 import { type PrototypeScene, SELECTED_EMISSIVE } from './prototypeScene';
 
@@ -73,6 +75,12 @@ export interface Viewer {
   visibleRooms(): string[];
   renderStats(): { frames: number; calls: number; triangles: number };
   onSelectionChange(listener: (id: string | null) => void): void;
+  /** Resolves once the first frame has rendered. */
+  firstFrame(): Promise<void>;
+  /** Adds lazily loaded room detail; selection, picking and the highlight include it. */
+  addDressing(dressing: BuiltDressing): void;
+  /** Number of dressings added so far. */
+  dressings(): number;
 }
 
 function toVec3(v: Vector3): Vec3 {
@@ -120,6 +128,11 @@ export function createViewer(host: HTMLElement, world: PrototypeScene): Viewer {
   let selected: string | null = null;
   const listeners: ((id: string | null) => void)[] = [];
   const pickables = [...world.roomParts.values()].flat();
+  let dressings = 0;
+  let resolveFirstFrame: () => void = () => undefined;
+  const firstFrame = new Promise<void>((resolve) => {
+    resolveFirstFrame = resolve;
+  });
   const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
   const raycaster = new Raycaster();
 
@@ -187,8 +200,9 @@ export function createViewer(host: HTMLElement, world: PrototypeScene): Viewer {
     if (id === null) return;
     const parts = (world.roomParts.get(id) ?? []) as readonly Mesh<never, MeshStandardMaterial>[];
     for (const mesh of parts) {
-      mesh.material.emissive.setHex(on ? SELECTED_EMISSIVE : 0x000000);
-      mesh.material.emissiveIntensity = on ? 0.55 : 1;
+      const rest = restEmissive(mesh.material);
+      mesh.material.emissive.setHex(on ? SELECTED_EMISSIVE : rest.color);
+      mesh.material.emissiveIntensity = on ? 0.55 : rest.intensity;
     }
   }
 
@@ -270,6 +284,7 @@ export function createViewer(host: HTMLElement, world: PrototypeScene): Viewer {
       renderer.render(scene, camera);
       labels.render(scene, camera);
       frames++;
+      if (frames === 1) resolveFirstFrame();
     }
     requestAnimationFrame(loop);
   }
@@ -355,5 +370,13 @@ export function createViewer(host: HTMLElement, world: PrototypeScene): Viewer {
     onSelectionChange(listener) {
       listeners.push(listener);
     },
+    firstFrame: () => firstFrame,
+    addDressing(dressing) {
+      pickables.push(...world.attach(dressing));
+      setHighlight(selected, true);
+      dressings++;
+      requestRender();
+    },
+    dressings: () => dressings,
   };
 }

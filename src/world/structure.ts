@@ -22,7 +22,10 @@ export type EvidenceClass = (typeof EVIDENCE_CLASSES)[number];
 
 /**
  * What a mesh depicts. Kit builders use these; `volume`/`connector` are topology stand-ins.
- * `ceiling` parts are built but hidden in the default map view (src/world/build.ts).
+ * `ceiling` parts are built but hidden in the default map view (src/world/build.ts). The
+ * hero-room parts (Execution 5) are `stack` (library and storeroom shelving), `machine`
+ * (fixed apparatus), `prop` (movable contents), `debris` (the frozen explosion) and the
+ * self-lit `glow` and `rod` (bulbs, the Eye, exposed fuel rods; {@link GLOW_PARTS}).
  */
 export const MESH_PARTS = [
   'volume',
@@ -46,8 +49,17 @@ export const MESH_PARTS = [
   'panel',
   'fuel-cell',
   'portal',
+  'stack',
+  'machine',
+  'prop',
+  'debris',
+  'glow',
+  'rod',
 ] as const;
 export type MeshPart = (typeof MESH_PARTS)[number];
+
+/** Parts drawn self-lit: they keep their glow when not selected. */
+export const GLOW_PARTS: ReadonlySet<MeshPart> = new Set<MeshPart>(['glow', 'rod', 'portal']);
 
 /**
  * `userData` of every world mesh.
@@ -381,6 +393,11 @@ export interface StructureElement {
   readonly tone?: RegionId;
   /** Text drawn next to the element (closed reported doors, the INF-E bypass). */
   readonly label?: string;
+  /**
+   * `feature`: the label names the evidence state of a hero feature (the reconfiguring ARS
+   * door, the portal). Otherwise it reads as a door or edge label by the tag's kind.
+   */
+  readonly labelKind?: 'feature';
   /** Where the label sits; doorways default to just above their opening. */
   readonly labelAt?: Vec3;
 }

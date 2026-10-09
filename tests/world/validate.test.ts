@@ -512,3 +512,45 @@ describe('graph and mesh reachability', () => {
     ]);
   });
 });
+
+describe('spatial validator: room circulation (Execution 5)', () => {
+  // A gallery inside room A, 3 NU above its floor along the x = 0..2 wall.
+  const gallery = {
+    id: 'A.gallery',
+    ownerId: 'A',
+    y: 3,
+    shapes: [{ kind: 'rect', min: [0, 0], max: [2, 10] }],
+  } as const;
+  const ladder = (owner: string, x: number) =>
+    ({
+      tag: { kind: 'room', id: owner, part: 'ladder', evidenceClass: 'inferred' },
+      primitive: { type: 'ladder', bottom: [x, 0, 5], top: [x, 3, 5], width: 1, facingDeg: 270 },
+    }) as const;
+
+  it('reaches a gallery by its own room ladder, but not by another room or out of reach', () => {
+    const base = { surfaces: [...VALID.surfaces, gallery] };
+    expect(checkWalkableReachability(withChanges(base), 'A.floor')).toEqual([
+      expect.objectContaining({ rule: 'walkable-unreachable', subject: 'A.gallery' }),
+    ]);
+    const own = withChanges({ ...base, elements: [...VALID.elements, ladder('A', 2.4)] });
+    expect(validateStructure(own, 'A.floor')).toEqual([]);
+    for (const e of [ladder('B', 2.4), ladder('A', 3)]) {
+      expect(
+        checkWalkableReachability(
+          withChanges({ ...base, elements: [...VALID.elements, e] }),
+          'A.floor',
+        ),
+      ).toEqual([expect.objectContaining({ subject: 'A.gallery' })]);
+    }
+  });
+
+  it('never lets room circulation change which rooms are reached', () => {
+    const d = withChanges({
+      surfaces: [...VALID.surfaces, gallery],
+      elements: [...VALID.elements, ladder('A', 2.4)],
+    });
+    expect([...reachableRooms(d, 'A.floor', { excludeConnections: new Set(['S']) })]).toEqual([
+      'A',
+    ]);
+  });
+});

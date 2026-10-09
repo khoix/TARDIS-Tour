@@ -2,10 +2,12 @@ import { Box3, InstancedMesh, Matrix4, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   buildPrimitive,
+  GLOW_INTENSITY,
   MaterialCache,
   partColor,
   PART_COLORS,
   plateGeometry,
+  restEmissive,
   sweepGeometry,
   TONE_COLORS,
 } from '../../src/world/kit';
@@ -24,7 +26,14 @@ import {
   PROFILES,
   stairHall,
 } from '../../src/world/kit/modules';
-import type { BoxPrimitive, MeshTag, StructureElement, Vec2 } from '../../src/world/structure';
+import {
+  type BoxPrimitive,
+  GLOW_PARTS,
+  MESH_PARTS,
+  type MeshTag,
+  type StructureElement,
+  type Vec2,
+} from '../../src/world/structure';
 import { onSurface } from '../../src/world/validate/geometry';
 
 const ROOM: Owner = { kind: 'room', id: 'M-01', tone: 'maintenance', evidenceClass: 'inferred' };
@@ -474,5 +483,20 @@ describe('kit builders for the Execution 4 primitives', () => {
     expect(partColor('console', 'cultural')).toBe(PART_COLORS.console);
     const tones = ['cultural', 'maintenance', 'power-core'] as const;
     expect(new Set(tones.map((t) => partColor('wall', t))).size).toBe(3);
+  });
+
+  it('self-lights glow parts and records it as their rest emissive; other parts stay matte', () => {
+    const cache = new MaterialCache();
+    const color = partColor('glow', 'power-core');
+    const glow = cache.get({ ...TAG, part: 'glow' }, color);
+    expect(glow.emissive.getHex()).toBe(color);
+    expect(glow.emissiveIntensity).toBe(GLOW_INTENSITY);
+    expect(restEmissive(glow)).toEqual({ color, intensity: GLOW_INTENSITY });
+    // Same node and colour, but matte: a separate material, so the glow never leaks.
+    const matte = cache.get({ ...TAG, part: 'wall' }, color);
+    expect(matte).not.toBe(glow);
+    expect(matte.emissive.getHex()).toBe(0);
+    expect(restEmissive(matte)).toEqual({ color: 0, intensity: 1 });
+    for (const part of GLOW_PARTS) expect(MESH_PARTS).toContain(part);
   });
 });
