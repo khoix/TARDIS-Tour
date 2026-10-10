@@ -1,0 +1,433 @@
+# Handoff
+
+Branch: `claude/tardis-isometric-v1`. Plan: `docs/EXECUTION-PLAN.md`. Rules: `AGENTS.md`.
+
+**Status: v1 complete (Ex1–Ex9).** All nine executions of the plan are on this branch. There is no next execution; post-v1 work is listed under "Post-v1 backlog". No PR to `main` has been opened (only on the user's request).
+
+Execution 4 was first committed on `claude/run-execution-4-d6v0k1`. Execution 5 fast-forwarded `claude/tardis-isometric-v1` to that commit and committed on top. That old branch is now only an ancestor of this one.
+
+## Completed
+
+- **Ex1:** research package, typed topology/evidence data, graph utilities, tooling, and a room inventory page.
+- **Ex2:** isometric Three.js prototype with orbit/pan/zoom, raycast selection, focus, info panel, region labels, a selectable room index, the `window.__tardis` test hook, Playwright (desktop + mobile), and GitHub Actions CI.
+- **Ex3:** the shared world contracts (`StructureDescription`, mesh tagging), the structural kit, the Pickwoad console-room greybox built describe → build, and the spatial validator. The console nodes P-EX, C-M, C-U, C-L, C-XU, C-XL and C-LAD replace their boxes, and each is selectable on its own. The desktop `console-room` visual baseline exists.
+- **Ex4:** the connected Tier-1 corridor skeleton.
+  - A description-level structural kit.
+  - The final v1 layout, grown from the console in 7-NU levels.
+  - Authored paths for the 14 stable edges outside the console.
+  - Greybox shells for every remaining placed room, with every topology anchor placed.
+  - An enclosed E-V vestibule holding the B28 portal, and the B37 bypass enclosed and labelled INF-E.
+  - Ceilings hidden in the map view, and region tones that read from inhabited to industrial with depth.
+  - The validator now runs over the whole map (new rules below). No box or connector bar is left in the scene.
+  - New `overview` baseline.
+- **Ex5:** the Journey hero spaces.
+  - S-01, L-01, ARS-01, F-01, E-A, E-01, E-V and ENG-01 are recognizable describe → build rooms inside their unchanged boxes and anchors.
+  - Each feature parameter has an evidence basis; the ARS door marker is generated from data.
+  - The hero detail loads lazily, in its own chunk, after the first greybox frame.
+  - New baselines: `library-region` and `power-core-region`. `overview` and `console-room` were regenerated (authorized).
+- **Ex6:** the cutaway and visibility system (`src/systems/visibility/`).
+  - A visual-state manager owns every world material and mesh visibility. Its layers (cutaway, isolation, selection, and `overlay`/`route` slots for Ex7) compose per mesh by precedence. It absorbed the viewer's `setHighlight` and the glow rest-emissive restore.
+  - Camera-facing wall cut (on by default, throttled to the camera), ceiling hide (default on), a horizontal section clip (slider plus level steps), region/level isolation that ghosts context, and focus mode.
+  - Picks skip hidden, ghosted, clipped and cut geometry, using the same formulas the shader draws with.
+  - A Cutaway toolbar panel with accessible, touch-sized controls.
+  - C-LAD is now selected on the canvas under the section clip. The Eye core and the frozen explosion show in the default views. All four baselines were regenerated, because the default view now cuts near walls.
+- **Ex7:** provenance overlay, routes and labels.
+  - Info panel: all five evidence axes (the new Connection axis lists each edge's basis and provenance), a known-vs-inferred indicator, the configuration state, graded records, a resolved source list with links, and "Route to console".
+  - Research overlay through the visual state's `overlay` slot: every mesh coloured by `evidenceClass`, the portal in its own violet, with a text legend.
+  - Routes: Dijkstra by walk-line length over the stable graph (portal toggle), "Route to console", from/to selectors over the placed rooms, the walked edges tinted through the `route` slot, a route tube along the walk lines, and a step list naming each edge kind.
+  - Progressive labels: Regions (default), Research (grades and source notes) and Structure (IDs, anchors, edges) modes. Labels scale with zoom, and anchor and edge labels wait until zoomed in.
+  - No baseline changed: the overlay, route and new labels are off or hidden in the default view, and baselines hide the label layer.
+- **Ex8:** visual language, lighting and performance.
+  - Procedural finishes in the connective grammar: dark metallic ribs, crowns and door frames; a hex grating on decks, catwalks and bridges; backlit teal roundels on the console-room walls; hex panel seams in corridors and the power core; faint warm-orange accents (console, rotor rings, fuel cells, closed doors) and teal panel accents. Cultural rooms stay matte wood and plaster.
+  - Two lighting layers: readability (teal hemisphere, warm key light, the only shadow caster) and six diegetic point lights giving the hero rooms their identities (rotor teal, the Eye, the engine fire, library lamplight, the architecture orbs, the fuel rods).
+  - Static merging per owner tag and material: the desktop overview went from 1265 draw calls (no shadows) to 243 without shadows and 409 with them.
+  - Quality tiers (high / medium / low) with frame-time auto-downgrade, a dev-only stats overlay, and draw-call and triangle budgets in the hook.
+  - All four baselines regenerated intentionally.
+- **Ex9:** final integration and full regression (integration and validation only).
+  - Full suite run on both projects, with every v1 DoD item and bible §F4 test checked against evidence (tables under Validation).
+  - **CI repaired.** CI had been red since Ex6 on the four desktop baselines alone. On the runner the canvas came out 1 px taller (1280×695 vs 694), because the toolbar title used `line-height: normal`, which follows the installed font. `src/style.css` now pins the title line boxes to the heights measured in the container (h1 20 px, subtitle 15 px; mobile h1 16 px). The canvas size no longer depends on fonts, and the local layout is unchanged, so no baseline was regenerated.
+  - New `e2e/integration.spec.ts` (both projects) covers the cross-system interactions: route × overlay × isolation × canvas selection × quality tier × reset, and section clip × canvas pick of a hidden room × route to console × focus mode × reset.
+  - README rewritten. §F4 table in `research/architecture-proposal.md` gains the Era row.
+
+## Architecture / decisions
+
+- **Topology is separate from layout.** `src/data/rooms.ts` (37 §17 nodes) and `src/data/connections.ts` (B01–B37) carry **no positions**. World transforms live in `src/data/layout.ts`, and connection walk lines in `src/data/paths.ts`.
+- **Layout (final v1, Ex4).** `LAYOUT` holds one `RoomTransform {roomId, position (floor centre), size [W,H,D], placementBasis: 'design'}` per placed room, in NU.
+  - Floors sit on 7-NU levels: +7 gallery and cultural spine; 0 main deck; −7 lower deck; −14 M-01, S-01, ARS-01; −21 M-02; −28 F-01, E-A, Eye catwalk; −35 E-V, ENG-01 gallery, B37 run. Voids below walkways: E-01 floor −40, ENG-01 floor −58.
+  - Every box equals the AABB of its room's description volumes (tested for all 19 rooms). `RoomTransform` has no rotation, so every box is axis-aligned and every door sits on an axis face.
+  - Rationale and rejected alternatives per room: `research/layout-hypothesis.md`. Built form and waypoints per edge: `research/connection-decisions.md`.
+- **Room shells (`ROOM_SHELLS` in layout.ts).** `RoomShell {roomId, kind: 'corridor'|'chamber'|'room', doors: DoorPlacement[], profile?, walk?: 'floor'|'catwalk'|'gallery', overhead?: 'fuel-cells'}`. A `DoorPlacement {anchorId, side, offset, sill?}` puts one topology anchor on a box face.
+  - Corridors: H-01, H-02, M-01, F-01 (F-01 is narrow, with the fuel-cell deck).
+  - Chamber: M-02.
+  - Rooms: L-01, S-01, ARS-01, E-A, E-V, plus E-01 (catwalk at sill 12) and ENG-01 (gallery at sill 23).
+- **Placed v1 nodes (19):** P-EX, C-M, C-U, C-L, C-XU, C-XL, C-LAD, H-01, H-02, L-01, S-01, M-01, ARS-01, M-02, F-01, E-A, E-01, E-V, ENG-01. `V1_CONNECTIONS` = B01–B09, B16–B18, B22–B28, B37 (20 edges: 6 built by the console, 14 by the skeleton).
+- **Portal handling.** B28 is the only portal (`portal: true`), and `buildGraph` excludes portals by default.
+  - It is drawn as a violet membrane in a hex frame (part `portal`) on the wall E-V shares with ENG-01. It is never walked.
+  - ENG-01 is reachable in 5 edges via B37 (INF-E). Without B37 it is unreachable on foot (tested).
+- **Evidence.** Rooms carry separate axes (`axes.presence/appearance/scale`, plus `state` and `observedStates`). Connections carry `provenance`, `basis`, `state` and `observedStates`. Claims are `EvidenceRecord {grade, sourceIds, note}`. Grades are per claim; the axes are never blended into one score. The info panel lists each axis on its own row.
+- **Grade usage.** Grade E is used only for speculative architecture (currently B37 and B36).
+- **Inference metadata.** Any connection that is inferred or carries a D/E record must have `inference {reason, alternate, uncertainty, authoredBy, status}`. Statuses stay `proposed` after Ex4: a validated geometry shows an edge can be built, not that it is evidenced.
+- **Door anchors.** Each room has anchors (`id, label, level, observed, canonAzimuthDeg: null`). Every connection end names an existing anchor, and each anchor is used at most once.
+  - The reported but unconnected console doors (`C-U.upper-door-2`, `C-L.lower-door-2`) are built **closed** and labeled "Reported, destination unknown".
+  - Anchors reserved for deferred edges (Tier-2 doors on H-01, H-02 and M-01) are built closed without labels.
+  - Authored bearings live only in description data (`AnchorPlacement.azimuthDeg`), never in rooms.ts. Shell anchors sit 0.5 NU inside their door opening, on the floor or walkway the door serves.
+- **Contract 1: describe → build (`src/world/structure.ts`).**
+  - A `describe` step is a pure function that returns a `StructureDescription {id, units: 'normalized', roomIds, volumes, surfaces, anchors, paths, elements, labels}`. It contains no Three.js objects.
+    - `Volume`: air space of a room or of the passage an edge builds, either `box {min, max, openings?}` or vertical `cylinder {center [x,z], radius, y0, y1}`.
+      - `ownerId` (renamed from `roomId` in Ex4) is a room id, or a connection id for corridor runs, stair halls and shafts. Volumes may touch but never overlap.
+      - `openings` lists the sides walkers leave a box through; each must meet another space.
+    - `WalkableSurface {id, ownerId, y, shapes}`: a level floor. Its footprint is the union of `annulus {center, inner, outer}` (inner 0 = disc) and `rect {min, max}` shapes, which must touch. Shell rooms have one surface per level (`unifyFloors`).
+    - `AnchorPlacement {roomId, anchorId, surfaceId, position, azimuthDeg | null, state: open|closed}`: the world position of a rooms.ts `DoorAnchor`, which must stand on its named surface. Descriptions place exactly the topology anchors of their rooms (tested).
+    - `PathSegment {id, connectionId, kind, portal, from, to, points}`: the walk line of one topology edge. The first point is the `from` anchor and the last is the `to` anchor; `from`, `to`, `kind` and `portal` copy the connection data.
+    - `StructureElement {tag, primitive, tone?, label?, labelAt?}`: what to draw.
+      - `tone` is the region whose greybox shade the element takes. It is not an evidence colour.
+      - `labelAt` positions a label; doorways default to just above their opening.
+      - Primitives are pure kit data: `plate` (disc, annulus, sector or `sides`-gon prism; a polygon sector spans whole faces), `box`, `stairs`, `ladder`, `railing` (line or arc), `doorway` (rect or hex frame, optionally `closed`), `rib`, `ring`, plus two new in Ex4:
+        - `sweep`: vertical sections swept along a level or sloped run; sloped runs shear so sections stay vertical. Used for corridor walls, decks, ceilings and frames.
+        - `instances`: one sweep, plate or box base at many `{position, yawDeg}` placements. It is only for decorative repeats; nothing walked on or enclosing a route is instanced.
+    - Azimuth convention: degrees about +Y, 0° = +Z (the exterior doors), 90° = +X. The helpers are `azimuthVector` and `polar`. Docs use compass shorthand: north = −Z, east = +X.
+  - The `build` step draws only what `elements` lists.
+    - `src/world/build.ts#buildStructure` returns `BuiltStructure {root, roomIds, connectionIds, roomParts, roomBounds, walkLines, anchors, tick}`. `anchors` (the description's `AnchorPlacement`s, Ex7) feeds the anchor labels, and `PrototypeScene.anchors` collects them; `roomBounds` is the union of each room's volume AABBs, and `walkLines` maps each built edge to its walk line (anchor to anchor). `buildStaticStructure(d)` is for descriptions with no animated parts (it throws on rings).
+    - `HIDDEN_BY_DEFAULT = {'ceiling'}`: ceiling meshes are built with `visible = false`. They stay in the scene graph; after build, the visual state's "Hide ceilings" setting owns their visibility.
+    - Element labels use class `edge-label` for connection-tagged elements and `door-label` otherwise. Every label carries `userData.labelOf: LabelOwner {kind: 'room'|'connection'|'region', id}`; `label()` in build.ts makes all of them, including the scene's room and region labels.
+    - Kit builders live in `src/world/kit/index.ts`. `MaterialCache` gives one material per (tagged node, colour), so highlights never bleed between rooms or edges. `partColor(part, tone)` reads `TONE_COLORS` (cultural warm, maintenance steel, power-core dark rust), then falls back to `PART_COLORS`. Plates, boxes and sweeps get hard-edge outlines, which are not pickable.
+  - `buildPrototypeScene(rooms, connections, layout, structures)` draws a structure's rooms and edges instead of boxes and connector bars. `src/main.ts` passes `[buildConsoleRoom(), buildSkeleton()]`, which covers every placed room and v1 edge, so the box view is only a fallback now.
+- **Hero rooms (Ex5, `src/world/rooms/hero/`).**
+  - `params.ts`: `HERO_PARAMS` per room and `HERO_PARAM_NOTES`, a `ParamNote {basis: verified|order|design, sourceIds, note}` for every parameter (the console's type).
+    - L-01 `floorCount` defaults to 4 storeys of 5 NU: a design choice (the sources conflict at five vs six [S28]/[S05]; rooms.ts keeps `floorCount = null`). It is the most that fit the box, and a taller value throws.
+  - `describe.ts`:
+    - `describeHeroRoom(id, params?)` returns `HeroDressing {roomId, surfaces, elements}`. It adds no volumes, anchors or paths.
+    - `describeHeroRooms()` is one `StructureDescription` with `roomIds: []`: it replaces no room, and its meshes join the greybox shells.
+    - `describeJourneyMap()` is the Tier-1 map merged with the hero rooms. It is the full structure the validator checks.
+    - `HERO_ROOM_IDS`, `RECONFIGURING_LABEL`, `PORTAL_LABEL`.
+  - Features:
+    - S-01: shelving on the door-free walls with mementos, the cot with bars, and the toy TARDIS.
+    - L-01: stacks on all walls, through `floorCount` storeys, with the doorway bays left empty. A `galleryRing` per upper storey (surfaces `L-01.gallery{k}.deck`), each with a ladder from the floor 0.4 NU off its inner edge. The encyclopedia stand.
+    - ARS-01: plinth, trunk, 3 × 6 sloped branch struts, and glowing orbs on hangers. Every door whose edge has `observedStates` containing `reconfiguring` (only B18) gets a glowing frame tagged to that edge, labelled `RECONFIGURING_LABEL`.
+    - F-01: glowing rods hang either side of the walk line with 2 NU of headroom, and stand between the fuel-cell rows on the deck.
+    - E-A: bulkhead frames on both doors, sweep-built locking wheels, and seal strips.
+    - E-01: the core is a 7-slice disc sphere 7 NU below the catwalk, with a containment ring, struts and 8 frozen flares. Two closed hex blind doorways on brackets sit at catwalk level on the unused `+x` and `+z` walls.
+    - E-V: a violet frame, floor chevrons and `PORTAL_LABEL`, all tagged `connection B28` (the edge's provenance), so E-V gains no room parts.
+    - ENG-01: the fireball (disc sphere) 11 NU below the gallery, a shock ring, and 72 instanced debris fragments on a deterministic golden-angle burst, inside the void. The engine plinth and struts.
+  - `heroRooms.ts` is the lazy entry (`buildHeroRooms()`). `src/main.ts` imports it with `import()` after `viewer.firstFrame()`, then calls `viewer.addDressing()`. Vite emits `assets/heroRooms-*.js` (about 13 kB).
+  - `build.ts#buildDressing(d)` builds a description with `roomIds: []` and returns `BuiltDressing {root, roomParts}`. `buildStructure` and `buildDressing` share `buildElements`.
+  - `PrototypeScene.attach(dressing)` adds the root and merges the parts into `roomParts`. It throws for rooms not in the scene, and bounds do not change.
+  - `Viewer` gains `firstFrame()`, `addDressing()` (it extends pickables and re-applies the highlight) and `dressings()`.
+  - Test hook: `heroReady`.
+  - Labels: `StructureElement.labelKind?: 'feature'` gives class `feature-label`. Door and edge labels are unchanged, so the console's two door labels and the B37 edge label stay unique.
+- **Routes (Ex7, `src/systems/navigation/`).**
+  - `routes.ts` (pure): `planRoute(from, to, roomIds, connections, walkLines, {allowPortal})` returns `Route {from, to, allowPortal, rooms, connections, steps, length}` or null. Edge weight is the walk line's length (`polylineLength`); edges without a walk line are skipped. It reuses `buildGraph` and `shortestPath`, so portals are excluded unless allowed.
+    - `RouteStep {connectionId, kind, portal, from, to, length, points}`: `points` is the walk line oriented in travel order.
+    - `routeLine(route)` concatenates the steps' walk lines. Consecutive steps meet in the room between them, where the line joins the arrival anchor to the departure anchor straight.
+    - `CONSOLE_ROOM_ID = 'C-M'`, and `edgeKindLabel(kind)` (`vestibule_portal` reads "Portal").
+    - Key routes: C-M → L-01 is B02, B04, B07, B08, B09. C-M → ENG-01 is B03, B05, B16, B22, B37 (125.7 NU) with portals off; with the portal allowed it runs B03, B05, B16, B22, B24–B28 (79.5 NU).
+  - `routeView.ts`: `routeLayer(route)` gives the walked edges' meshes `{tint: ROUTE_TINT (0x3fd8e8 at 0.7), ghost: 1}`; the selection's tint outranks it. `createRouteLine()` returns `{root, show(route | null), setSection(y | null)}`: one near-white `TubeGeometry` (radius 0.22 NU, lifted 0.4 NU) whose `raycast` is disabled. It is not a tagged world mesh, so the visual state does not manage it. It is clipped at the section by a material clipping plane (the viewer sets `renderer.localClippingEnabled`).
+  - `main.ts` holds the `RouteQuery {from, to, allowPortal}`, re-plans on every change, and updates the tube, the `route` slot, the label system and the panel together.
+- **Research overlay (Ex7, `src/systems/research/overlay.ts`).** `overlayLayer` fills the `overlay` slot with `{color: EVIDENCE_COLORS[tag.evidenceClass]}` (sourced green, reconstructed blue, inferred yellow, speculative red).
+  - The `portal` part takes `PORTAL_OVERLAY_COLOR` (violet) whatever its provenance class. Glow parts also take the colour as their emissive.
+  - `LEGEND` (five entries with text notes) and `cssColor` feed the legend and the info panel's swatch.
+  - Variants are material swaps, so the overlay adds no draw calls (E2E-checked).
+- **Labels (Ex7, `src/systems/labels/labels.ts`).** `LabelSystem(layer, rooms, connections)`:
+  - `createLabels({walkLines, anchors})` returns a group of new CSS2D labels: one `connection-label` per built edge at its walk line's midpoint (spans: ID, kind, provenance and grades), and one `anchor-label` per door anchor (`is-closed` when closed). `main.ts` adds the group to the world and registers it with the visual state, so the section clip and isolation dimming apply to it.
+  - `register(root)` takes over every label; room labels become spans `label-id`, `label-name` and `label-grades`. `gradesText` lists the distinct grades best first (`grade A C`), never one score.
+  - `setMode(mode)` writes `data-label-mode` on the layer; `setSelection` and `setRoute` toggle `is-selected` and `on-route` on the owners' labels. The rest is CSS in `src/style.css`, and the visual state's inline `display: none` (section clip) still wins.
+    - `default`: region labels, the selected room's labels (ID and name) and the route's room and edge labels.
+    - `research`: every room label with its grades, edge labels with provenance and grades, and the door, edge and feature labels (the source notes). No anchors.
+    - `structure`: room IDs, edge labels with their kind, anchors, and the door and edge labels. No feature labels.
+  - Zoom: the viewer calls `applyLabelZoom(layer, zoom)` when the zoom changes. It sets `--label-scale` (0.85–1.35; label font sizes multiply by it) and `data-zoom` (`far` below 1, `mid`, `near` from 2.5). At `far`, anchor labels and edge labels off the route are hidden. The desktop overview (0.745) and the mobile one (0.441) are both `far`.
+- **Contract 2: mesh tagging.** Every world mesh has `userData: MeshTag {kind: 'room'|'connection', id, part, evidenceClass}`.
+  - `part` is one of `MESH_PARTS` (`volume` and `connector` are the box view's stand-ins). Ex4 adds `ceiling`, `catwalk`, `shaft`, `panel`, `fuel-cell` and `portal`. Ex5 adds `stack`, `machine`, `prop`, `debris`, `glow` and `rod`.
+  - `GLOW_PARTS` (`glow`, `rod`, `portal`) are self-lit. `MaterialCache` keys materials by glow as well, sets the emissive to the part colour at `GLOW_INTENSITY` 0.85, and records `userData.restEmissive`. Since Ex6 a highlight is a cloned material variant, so deselecting restores the base material and with it the rest emissive. Support-rib frames are instanced `rib` parts; roundel and hex panels are instanced `panel` parts.
+  - `evidenceClass` is `sourced|reconstructed|inferred|speculative`. It describes how the part's existence and form are known, never its dimensions (all dimensions are `normalized_authored`).
+    - Edge parts (passages, thresholds, the portal) use `evidenceClassOfProvenance` (TV-S/TV-M/OFF/PROD → sourced, REC/EXP → reconstructed, INF-D → inferred, INF-E → speculative).
+    - Shell rooms use `evidenceClassOfPresence`, except E-V's enclosure (inferred), the fuel-cell deck (inferred), the fuel cells (sourced) and ENG-01's gallery (inferred).
+    - Console parts choose explicitly in `describe.ts`.
+  - Picking raycasts only `kind: 'room'` meshes; passages, stairs, doorways and connector bars do not block clicks. Every hit then goes through the visual state's pick filter. Selection, cutaway, the overlay (Ex7) and routes must read this tag, never mesh names.
+- **Visual state (Ex6, `src/systems/visibility/`).** It is the only owner of world materials and mesh visibility. Nothing else may set `mesh.material`, `mesh.visible` or an emissive on a world mesh.
+  - `state.ts` (pure):
+    - `VISUAL_LAYERS = ['cutaway', 'isolation', 'overlay', 'route', 'selection']`, in ascending precedence.
+    - `LayerEffect {hidden?, cut?, ghost?, tint?, color?}` and `LayerFn = (tag: MeshTag) => LayerEffect | undefined`.
+    - `composeLayers(effects)` returns `ResolvedVisual {hidden, cut, ghost, tint, color, pickable}`.
+      - `hidden` and `cut` are unions: no layer can reveal what another hides or cuts.
+      - `ghost`, `tint` and `color` come from the highest-precedence layer that sets them, so the selection (ghost 1) reveals a room an isolation ghosts.
+      - `pickable = !hidden && ghost >= PICK_MIN_KEEP` (0.5).
+    - `CutawaySettings {wallFade, ceilingsHidden, sectionY, isolation, focusMode}`. `DEFAULT_CUTAWAY`: wall cut on, ceilings hidden, no section, no isolation, no focus.
+    - Built-in layers:
+      - `cutawayEffect`: ceilings hidden; `CUT_PARTS` (wall, shaft, rib, crown, panel, stack, door-closed) get `cut`.
+      - `isolationEffect`: outside the set, ghost `GHOST_KEEP` (0.25). The focused room loses its ceiling and gets `cut` whatever the global settings.
+      - `selectionEffect`: tint `SELECTED_TINT` (0xe8913a at 0.55, formerly `SELECTED_EMISSIVE` in prototypeScene.ts) and ghost 1. The focused room gets none and keeps its own colours.
+    - Isolation: `isolationScope(settings, selection)` (focus mode wins while a room is selected) and `isolationSet(scope, rooms, connections, bounds)` return `{rooms, connections, focus}`. A region uses `room.region`. A level y holds the rooms whose box overlaps [y, y + 7). Edges with an end in the set stay solid, so the way out of the set stays visible.
+    - Levels and sections: `deckLevels` (floors on the 7-NU grid: +7 to −35), `sectionStops` (each level + 6: 13, 6, −1, −8, −15, −22, −29), `lowerSection`, `raiseSection`.
+  - `cutaway.ts` (pure; the shader mirrors it):
+    - Spines: a room's is the medial segment of its box footprint (`roomSpine`: a point when square, a segment along the long axis otherwise). An edge's is its walk line (`walkLineSpine`, at most `MAX_SPINE_POINTS` = 8).
+    - `nearestOnSpine` weighs vertical distance by 0.25, so a flight's walls project across the flight.
+    - `isCutAt(p, spine, view)`: p is cut when (p − nearest) · view, horizontally, exceeds `CUT_MARGIN_NU` (0.05). The cut is a vertical plane through the spine, facing the camera. `clippedAt(y, sectionY)` is `y > sectionY`.
+    - `acceptsHit` and `firstPick` are the clip-aware pick filter. `Throttle` and `VIEW_THROTTLE_MS` (100) pace the cut.
+  - `materials.ts`: `MaterialStates` patches every base material once (`onBeforeCompile`, one program key) and hands out variants cached per (base, state).
+    - Fragment code: discard above `uTardisClipY`. Cut fragments keep `CUT_KEEP` (0.125) and ghosts `GHOST_KEEP` (0.25) of their pixels, through a 4×4 Bayer dither. Surfaces stay in the opaque pass: no sorting, depth intact, mobile-safe.
+    - Outlines blend instead (`GHOST_LINE_KEEP` 0.35, `CUT_LINE_KEEP` 0.25), because a dithered 1-px line vanishes at some angles. Their variants are the only transparent materials.
+    - The clip height and view direction are shared uniforms, so toggles never recompile. Per material: ghost, cut, cut keep and the owner's spine. `tardisUniforms(material)` reads them (tests).
+  - `manager.ts`: `new VisualState(world: VisualWorld, rooms, connections)`. A `PrototypeScene` is a `VisualWorld`.
+    - It takes over the world at construction, and `register(root)` takes over later dressings: every tagged mesh, its outlines and every CSS2D label. A base material shared by two owners is cloned; outlines share one material per owner and colour.
+    - **API for Ex7:**
+      - `settings()`, `update(patch)`, `reset()`. Isolating a region or level ends focus mode; focus mode needs a selection and replaces any isolation.
+      - `setSelection(id)` (clearing it ends focus mode), `setView(view)`.
+      - `setLayer('overlay' | 'route', fn | null)`; Ex7 fills both slots.
+      - `layerTargets(slot)` (Ex7): the sorted `kind:id` owners of drawn meshes the slot's layer has an opinion on (the hook's `routeHighlight`).
+      - `snapshot()` returns `VisibilitySnapshot`: the settings plus `focusRoom`, `isolatedRooms` and `view`.
+      - `onChange(listener)`, `resolved(object)`, `pick(hits)`, `roomVisible(id)`, `roomPickable(id)`, and the read-outs `levels`, `sectionStops` and `sectionRange`.
+    - Each pass memoizes results per tag, so a layer function must depend only on the tag (and state captured when it is set).
+    - Labels: hidden above the section, and `is-ghosted` (CSS opacity 0.35) when their owner is outside the isolation; a region label when none of its rooms is isolated.
+- **Structural kit, description level (`src/world/kit/modules.ts`).** Pure functions return a `Piece {volumes, surfaces, elements, decor}` for an `Owner {kind, id, tone, evidenceClass}`.
+  - `PROFILES`: standard hex 4 × 4 on a 3-NU deck; narrow 3.5 × 3.5 on a 2.5-NU deck.
+  - Pieces:
+    - `corridorRun`;
+    - `junction`, with sides `open|wall|door`, used for corners, T and 4-way junctions;
+    - `stairHall`, an enclosed flight;
+    - `ladderShaft`, with a half landing at the head and a full one at the foot;
+    - `catwalk` and `galleryRing`, both railed;
+    - `nodeChamber`, octagonal;
+    - `boxShell`, with door openings, an optional walkable floor, and panels on blank faces;
+    - `threshold`, a rect or hex frame;
+    - `faceWall`.
+  - Ceilings are separate `ceiling` elements. `decorElements` gathers decorative repeats into one instanced element per owner and kind.
+- **Shells (`src/world/rooms/shells.ts`).** `describeShellRooms()` builds every `ROOM_SHELLS` room from its box. It throws if the doors differ from the room's topology anchors.
+  - Corridor side doors sit in junctions; a closed door at a corridor end sits in a junction against that end.
+  - Anchors that no v1 edge uses are closed.
+  - `DOOR_SIZE`: standard 3 × 3.4, narrow 2.5 × 3.
+  - Rib spacing by tone: cultural 4, maintenance 3, power core 2.5.
+- **Passages (`src/world/corridors/describe.ts`).** `describePassages({anchors, volumes})` turns each `PATHS` entry into kit segments from anchor to anchor.
+  - Leg forms:
+    - level legs are corridor runs, clipped at the room boxes and at their joints;
+    - turns are corner junctions centred on the waypoint;
+    - sloped legs are stair halls, which must sit between level legs heading the same way;
+    - vertical legs are ladder shafts;
+    - a leg that only crosses a shared wall is a threshold.
+  - Paths never double back.
+  - A threshold frame is added where a path crosses into a `room` shell: rectangular into cultural rooms, hex elsewhere.
+  - INF-E edges get the label "B37 · INF-E bypass, authored (not filmed)".
+- **Skeleton (`src/world/skeleton.ts`).** `describeSkeleton(consoleRoom)` combines the shells and the passages, against the console's anchors and volumes. `describeTier1Map()` merges it with the console (`mergeDescriptions`). `buildSkeleton()` builds it statically. `MAP_START_SURFACE = 'C-M.main-deck'`.
+- **Spatial validator (`src/world/validate/`).** Pure functions on a description, each returning `ValidationIssue {rule, subject, message}[]`. `validateStructure(d, startSurfaceId)` runs every rule below except `graph-mesh-mismatch`. Tolerance is `EPSILON_NU = 1e-3`.
+  - `anchor-on-surface`: each anchor stands on its surface, which belongs to its room.
+  - `path-lands-on-surface`: both ends of each path are on a surface.
+  - `path-endpoint-is-anchor`: the ends equal the named anchors, which must exist and be open.
+  - `path-supported` (Ex4): every leg is carried by real structure.
+    - Level legs run over floors, with gaps no wider than `STEP_GAP_NU = 0.75`.
+    - Sloped legs are no steeper than `MAX_FLIGHT_SLOPE = 1`, are carried by a `stairs` element with exactly those ends, and land on floors.
+    - Vertical legs are carried by a `ladder` whose ends are within a step of a floor.
+  - `element-lands` (Ex4): every stairs element lands on floors, and every ladder ends within a step of one.
+  - `volume-overlap`: exact box/cylinder tests over rooms and passages; touching is allowed.
+  - `dangling-end` (Ex4): every box opening meets another box face. That face is either a matching opening, or a room with an open anchor within `DOOR_REACH_NU = 1`.
+  - `surface-disjoint` (Ex4): a surface's shapes touch.
+  - `walkable-unreachable`: BFS from the start surface with portals disabled. A path links every surface it walks over: its ends, its landings, and the floors under its level legs.
+    - Ex5 adds **room circulation**: a room-tagged `stairs` or `ladder` element links the floors of that same room at its two ends (on the surface for stairs, within a step for ladders). It never links two rooms, so room reachability and graph agreement are unchanged (fixture-tested). The L-01 galleries depend on it.
+  - `graph-mesh-mismatch` (Ex4): `checkGraphAgreement(d, start, graphReached, {excludeConnections})` compares the rooms the graph reaches with `reachableRooms(d, start, …)`. It is run in `tests/world/skeleton.test.ts`, with and without B37.
+- **Console room (`src/world/rooms/console/`).** Unchanged in Ex4 apart from the `ownerId` rename.
+  - `params.ts`: `CONSOLE_PARAMS` (NU), plus a `CONSOLE_PARAM_NOTES` basis (verified/order/design) for every parameter.
+  - `describe.ts`: `describeConsoleRoom()`, `CONSOLE_ROOM_IDS` and `CONSOLE_START_SURFACE = 'C-M.main-deck'`.
+  - `build.ts`: `buildConsoleRoom()`, which spins the two rings in opposite directions.
+  - Shape: 18 ribs at 10° + 20°k. Three decks: main is a radius-10 platform, the gallery an annulus from 17 to 21 at Y 7, and the lower deck a disc at Y −7 with a radius-1 hatch. A solid lower drum, the gallery wall, and a crown at Y 19. A hexagonal console, rotor column and two 18-segment rings.
+  - Stairs: B02 at 120° and B03 at 240°. B01 bridge at 0° to P-EX. Open doors: B04 on the gallery at 0° to C-XU, and B05 (hex panel) on the lower deck at 180° to C-XL. B06 ladder from the hatch down to C-LAD. Closed doors on the gallery at 180° and the lower deck at 60°.
+  - Proportions with rationale: `research/room-dossiers/console-room.md`.
+- **Scene (`src/scene/`).**
+  - `camera/isometric.ts`: pure camera math, unit-tested without WebGL. Isometric pitch is `atan(1/√2)` ≈ 35.264° and yaw 45°. `VIEW_HEIGHT_NU = 120` is the frustum height at zoom 1; it stays fixed on resize and the width follows the aspect. `framePose(bounds, aspect, margin, yaw?, pitch?)` serves reset, room focus (which keeps the current angles) and region focus (isometric angles). `lerpPose` drives the focus/reset tween, which is skipped under `prefers-reduced-motion`.
+  - The overview frames the bounds of every placed room: zoom 0.745 on desktop (1280×800) and 0.441 on the 390×844 mobile project. Any growth of the map must keep mobile at or above the 0.4 zoom floor, or change the framing.
+  - `topology.ts`: pure `roomBounds`, `walkPoint` (floor + 1 NU) and `connectorLegs` (X, then Z, then Y, contiguous and axis-aligned). These are used only by the box fallback now.
+  - `prototypeScene.ts`: adds the built structures, then one box per remaining placed room (with an outline and a CSS2D room-ID label), connector boxes per remaining v1 edge, and CSS2D region labels. It exposes `roomParts` (room id → pickable meshes), `roomBounds`, `walkLines` (all structures' edge walk lines), `regionBounds`, `overview` and `tick`.
+  - `viewer.ts`: the renderer, `OrthographicCamera` and three's `OrbitControls`. `createViewer(host, world, visual)` takes the `VisualState` and exposes it as `viewer.visual`.
+    - Picks go through `visual.pick`. Selection is `visual.setSelection`.
+    - Camera changes mark the cut's view direction pending; the render loop applies it at most every 100 ms (`Throttle`), and once more when the camera settles. `isAnimating()` stays true while it is pending, so `waitIdle` also waits for the cut.
+    - `screenPointOf` returns null unless `visual.roomPickable(id)`, and samples the footprint only below the section. `visibleRooms()` lists rooms with drawn geometry (ghosts count); `pickableRooms()` lists rooms that may take a click.
+    - Mouse: left-drag orbits, right-drag pans, wheel zooms.
+    - Touch: one finger orbits, two fingers pinch and pan.
+    - Pitch is clamped to 10°–85° and zoom to 0.4–12.
+    - Rendering is on demand (dirty flag plus animation). Ambient motion (`world.tick`, the rotor rings) redraws at most every 66 ms. It is paused while a pointer is down or a camera tween runs, and fully under `prefers-reduced-motion`. Without the pause, SwiftShader gesture tests ran three times slower.
+    - Tap vs drag: travel under 6 px and under 500 ms counts as a tap. A second tap on the same room within 400 ms counts as a double-tap and focuses it.
+    - Empty space deselects.
+- **Test hook (`src/scene/testHook.ts`).** Installed in dev builds, or in any build with `?test`. `window.__tardis` exposes:
+  - `ready` (first frame rendered), `camera()` (`{target, position, zoom, yawDeg, pitchDeg}`) and `animating()`.
+  - `screenPointOf(id)`: a client-space pixel where a real click hits that room first. It samples the room's projected footprint (its `roomBounds`), skips points covered by UI, and returns null if the room is fully occluded.
+  - `roomAt(x, y)`, `selection()`, `visibleRooms()`, and `renderStats()` (`{frames, calls, triangles}` from `renderer.info`).
+  - Actions: `select(id)` (`null` clears), `focusRoom(id)`, `focusRegion(region)`, `resetView()`.
+  - Ex6 added `pickableRooms()` and `visibility()` (the manager's `VisibilitySnapshot`), and `animating()` also covers a pending cut.
+  - Ex7 added `route()` (`RouteSnapshot {from, to, allowPortal, rooms, connections, kinds, length}` or null), `routeHighlight()` (the connections whose drawn meshes the route layer tints) and `research()` (`{overlay, labelMode}`). `installTestHook(viewer, {route, research})` takes the app state it reports. Extend this interface; don't fork it.
+- **UI.**
+  - `src/ui/roomIndex.ts`: each room is a `button[data-room-id][aria-pressed]` that calls `onSelect`, and `setIndexSelection` mirrors the canvas selection.
+  - `src/ui/infoPanel.ts`: `renderInfoPanel(container, room, {onFocus, onClose, onRouteToConsole}, connections)`.
+    - Name, ID/region/tier and summary.
+    - The known-vs-inferred indicator: the room's presence class with its overlay swatch, plus "Placement and size are authored".
+    - The five axes: Presence, Appearance, Scale, Connection (`connectionAxis`: one entry per edge, e.g. `B37 to M-02: inferred (INF-E)`, with deferred edges marked) and State (with observed states).
+    - Appearances, graded records with source links, and Sources (`citedSources`: each cited source once, with title, kind, what it verifies and every URL).
+    - Actions: Focus, Route to console (disabled on C-M), Details and Close.
+  - At ≤720 px the panel is a bottom sheet that opens collapsed (header only; Details expands it to ≤45% height), the room index starts closed, and the toolbar is one horizontally scrolling row. All buttons are at least 44 px.
+  - CSS2D labels sit under the panels (z-index 1 vs 2). `.door-label` marks closed reported doors; `.edge-label` marks the INF-E bypass; `.is-ghosted` dims labels of ghosted owners.
+  - `src/ui/cutawayPanel.ts` (Ex6): `renderCutawayPanel(container, options, {onChange, onReset})` returns `{sync(settings, hasSelection)}`.
+    - Controls: "Fade near walls" and "Hide ceilings" checkboxes; "Section height" slider (step 0.5; at its max, no section) with an `output` and `aria-valuetext`; "Lower section" and "Raise section" step between section stops (the touch path); "Isolate" select (Nothing, regions, levels); "Focus mode" (`aria-pressed`, disabled without a selection); "Reset cutaway".
+    - `main.ts` wires it to the manager. Entering focus mode also frames the room. Home still resets only the camera.
+    - The toolbar's "Cutaway" button (`#toggle-cutaway`, `aria-expanded`) opens `#cutaway-panel`, closed by default. On desktop it is centred at the top between the index and the info panel. At ≤720 px it is a top sheet that alternates with the room index.
+    - Every control is at least 44 px. `.region-buttons` no longer shrinks in the scrolling mobile toolbar: it used to, letting later toolbar buttons overlap the region buttons.
+  - `src/ui/researchPanel.ts` (Ex7): `renderResearchPanel(container, {onChange})` returns `{sync(ResearchSettings)}`. It holds the "Evidence overlay" checkbox; the legend (`ul.legend`, labelled "Evidence overlay legend", shown only while the overlay is on); and the "Labels" radios Regions, Research and Structure, each with a visible hint. `DEFAULT_RESEARCH = {overlay: false, labelMode: 'default'}`.
+  - `src/ui/routePanel.ts` (Ex7): `renderRoutePanel(container, rooms, {onChange, onClear})` returns `{sync(query, route)}`. It holds "From" and "To" selects over the placed rooms (grouped by region), "Allow portal (B28)", "Clear route", an `aria-live` summary (`routeSummary`) and `ol.route-steps` (`stepText`, e.g. `Corridor · B37: Engine core (ENG-01) → … (M-02)`, with `data-connection-id` and `data-kind`).
+  - Toolbar: "Research" (`#toggle-research`) and "Route" (`#toggle-route`) open `#research-panel` and `#route-panel`. They share the cutaway panel's styling and top-centre slot, so only one of the three is open at a time; on narrow screens the room index joins that rotation. "Route to console" also opens the route panel.
+- **Sources.** `src/data/evidence.ts` holds 56 sources, mirrored in `research/sources.md` with the same IDs in the same order (enforced by a test). If the data changes, update the generated markdown in the same commit.
+- **Tooling.**
+  - TypeScript is pinned to `~6.0.3`, because typescript-eslint 8.71 doesn't support TS 7. `three@^0.186.1` and `@types/three@^0.186.0` are installed.
+  - Vite splits three into `three-core` and `three-webgl` vendor chunks (`vite.config.ts`), keeping every chunk under the 500 kB warning.
+  - Prettier ignores `docs/reference/**` and `docs/EXECUTION-PLAN.md`.
+- **Playwright / Chromium.**
+  - `@playwright/test` is pinned **exactly** to `1.56.1`, whose Chromium revision is 1194. That matches the preinstalled `/opt/pw-browsers/chromium-1194`, and `PLAYWRIGHT_BROWSERS_PATH` finds it with no `executablePath`. Bumping Playwright requires a matching browser, so never run `playwright install` in the cloud container.
+  - Projects: `desktop` (Desktop Chrome, 1280×800) and `mobile` (iPhone 13 descriptor forced to Chromium: hasTouch, isMobile, 390×844).
+  - Launch args: SwiftShader (`--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist`).
+  - webServer: `vite build && vite preview --port 4173`, reused locally.
+  - Traces are retained on failure, with screenshots on failure.
+  - Multi-touch gestures use CDP `Input.dispatchTouchEvent` (`e2e/helpers.ts#touchGesture`); Playwright's touchscreen only taps.
+  - Visual baselines: `toHaveScreenshot` on the canvas with `stylePath: e2e/baseline.css` (hides labels and the index, cutaway and info panels so fonts don't matter), `reducedMotion: 'reduce'` (rings at rest, instant focus), and `maxDiffPixelRatio: 0.01`. Snapshots live in `e2e/<spec>-snapshots/`, desktop and Linux only.
+- **CI (`.github/workflows/ci.yml`).** On pushes to `main` and `claude/**` and on PRs: `npm ci` → lint → typecheck → unit → build → `npx playwright install --with-deps chromium` → e2e. On failure it uploads `playwright-report/` and `test-results/`.
+
+- **Visual language (Ex8).**
+  - Finishes live in `src/world/kit/index.ts`: `SurfaceSpec {roughness, metalness, motif, motifGlow, accent}`, `PART_SURFACES` and `TONE_SURFACES`, read by `surfaceOf(part, tone)`. `MaterialCache.get(tag, color, tone)` keys materials by owner, colour and finish; colours still come from `PART_COLORS`/`TONE_COLORS`. Accents are a faint emissive recorded as `userData.restEmissive` (intensity always below `GLOW_INTENSITY`, so only `GLOW_PARTS` are self-lit). `userData.motif` (index into `SURFACE_MOTIFS`: none, hex, roundel, hex-panel) and `userData.motifGlow` feed the shader.
+  - Motifs are drawn in world space by the visibility patch (`materials.ts`, program key `tardis-visibility-2`, define `TARDIS_SURFACE`): `tardisMotifShade` multiplies the base colour after `color_fragment`, the roundel backlight adds to `totalEmissiveRadiance` after `emissivemap_fragment`. Motif and backlight are per-material uniforms (`uTardisMotif`, `uTardisMotifGlow`), so all surfaces share one program. Each motif fades out when a cell covers only a few pixels (`fwidth`), so the overview never shimmers. Cells: `HEX_CELL_NU` 1.6, `ROUNDEL_CELL_NU` 2.4.
+  - A colour override (the overlay) makes the variant matte (`OVERRIDE_FINISH`), drops the accent emissive (unless tinted) and the backlight, so evidence colours read true; the base keeps its finish.
+- **Lighting (Ex8, `src/scene/lighting.ts`).** `describeLights()` is pure: six `LightSpec {id, roomId, color, intensity, distance, position, note}` in priority order (rotor C-M, Eye E-01, engine fire ENG-01, library L-01, orbs ARS-01, fuel rods F-01), each placed from the layout box (the Eye and the fireball from the walkway sill minus `HERO_PARAMS` drops) and tested to stand inside its room. `createLighting(scene, bounds, specs)` builds the readability layer (hemisphere `HEMI_*`, key light `KEY_*` whose orthographic shadow camera covers the overview, shadow `intensity` 0.55) and the point lights; `setDiegetic(count, dimmed)`, `setShadows(on, mapSize)`, `diegeticOn()`. The viewer owns it; `main.ts` dims the diegetic lights while the evidence overlay is on.
+- **Shadows (Ex8).** The key light casts on the high tier only. The visual state sets every managed mesh `castShadow`/`receiveShadow` and gives it `customDepthMaterial = MaterialStates.depthVariant(base, resolved)`: a `MeshDepthMaterial` patched with the same clip, cut and ghost uniforms (`TARDIS_DEPTH`) that discards any fragment not drawn solid. Cut walls, ghosts, hidden meshes and geometry above the section therefore cast no shadow.
+- **Static merging (Ex8, `src/world/merge.ts`).** `buildElements` ends with `mergeStatic(root)`: the direct, non-instanced tagged meshes of a group (and of each child group, e.g. a spinning ring, within it) that share tag, material and visibility become one mesh (position and normal only, non-indexed), and their outlines one `LineSegments` child. A merged mesh keeps one owner and one part, so every layer resolves exactly as before; picks name the owner. The scene went from about 1330 objects to about 285.
+  - **Instancing and owners.** Decorative repeats stay `InstancedMesh`es, one per owner and kind (`decorElements`, hero repeats); an instanced mesh maps to exactly one owner, which is how selection, the overlay and routes reach it (unit-tested). Cross-owner instancing was rejected: the cut spine, ghost and tints are per-owner material uniforms.
+- **Quality tiers (Ex8, `src/systems/quality/tiers.ts`, pure).**
+  - `QUALITY[tier]`: `pixelRatioCap` (2 / 1.5 / 1), `shadows` (high only, 2048 map), `diegeticLights` (6 / 3 / 0), `ambientMotion` (off on low), `detail` (`reduced` on low) and `budget {calls, triangles}` (480 / 85k, 300 / 45k, 260 / 36k).
+  - `initialTier(device)`: low for ≤ 2 cores or ≤ 2 GB, medium for a coarse pointer or a viewport ≤ 720 px, else high. `parseQualityOptions(search, dev)`: `?quality=high|medium|low` pins a tier; `?test` turns auto-downgrade off unless `quality=auto` (headless frame times are software rendering); `?stats` or a dev build shows the stats overlay.
+  - `FrameTimeMonitor`: samples only frames rendered back to back (renders are on demand); when 75% of a 40-sample window exceeds 33.3 ms it asks for one step down, then waits 3 s. It never upgrades, so the picture never oscillates. Intervals over 1 s are ignored.
+  - Reduced detail is the visual state's new lowest layer `quality` (`VISUAL_LAYERS` now starts with it): `detailEffect` hides `DETAIL_PARTS` (panel, debris, prop) except in the selected room. `VisualState.setDetail(level)` / `detail()`.
+  - Viewer: `createViewer(host, world, visual, {lights, quality: {tier, auto}})`, `quality()` (`QualitySnapshot`), `setQuality(tier)` (pins), `budget()` (`BudgetReport`: last frame's calls and triangles from `renderer.info`, shadow pass included, against the tier's budget), `setDiegeticDimmed(dimmed)`.
+  - `src/ui/statsOverlay.ts`: `statsText` and `createStatsOverlay` (a `pre.stats-overlay`, `aria-hidden`, refreshed every 500 ms, `.over-budget` when over). Baselines hide it.
+  - Test hook (Ex8): `quality()`, `budget()`, `setQuality(tier)`.
+
+## Important files
+
+- `src/data/{types,rooms,connections,evidence,eras,layout,paths}.ts`
+- `src/systems/navigation/graph.ts` (`buildGraph`, `reachableFrom`, `shortestPath`)
+- `src/scene/{viewer,prototypeScene,topology,testHook}.ts`, `src/scene/camera/isometric.ts`
+- `src/world/structure.ts` (both contracts), `src/world/build.ts`, `src/world/kit/{index,modules}.ts`, `src/world/validate/{geometry,index}.ts`
+- `src/world/rooms/console/{params,describe,build}.ts`, `src/world/rooms/shells.ts`, `src/world/corridors/describe.ts`, `src/world/skeleton.ts`
+- `src/world/rooms/hero/{params,describe,heroRooms}.ts`
+- `src/systems/visibility/{state,cutaway,materials,manager}.ts`
+- `src/systems/navigation/{routes,routeView}.ts`, `src/systems/research/overlay.ts`, `src/systems/labels/labels.ts`
+- `src/world/merge.ts`, `src/scene/lighting.ts`, `src/systems/quality/tiers.ts`, `src/ui/statsOverlay.ts`
+- `src/ui/{roomIndex,infoPanel,cutawayPanel,researchPanel,routePanel}.ts`, `src/main.ts`, `index.html`, `src/style.css`
+- `tests/systems/visibility/{state,cutaway,manager}.test.ts`, `tests/ui/cutawayPanel.test.ts`
+- `tests/world/merge.test.ts`, `tests/systems/quality/tiers.test.ts`, `tests/scene/lighting.test.ts`, `tests/systems/visibility/materials.test.ts`, `tests/ui/statsOverlay.test.ts`, `e2e/perf.spec.ts`
+- `tests/navigation/{routes,routeView}.test.ts`, `tests/systems/research/overlay.test.ts`, `tests/systems/labels/labels.test.ts`, `tests/ui/{infoPanel,researchPanel,routePanel}.test.ts`
+- `README.md` (project, run/test, provenance caveats, attributions); `e2e/integration.spec.ts` (Ex9 cross-system journeys)
+- `e2e/helpers.ts` (`waitHero`, `press`, `setCutawayOpen`, `setPanelOpen`, `visibility`, `pickableRooms`, `route`, `routeHighlight`, `research`), `e2e/{scene,selection,mobile,console,overview,hero,cutaway,research,route}.spec.ts`, `e2e/baseline.css`, the snapshots `e2e/console.spec.ts-snapshots/console-room-desktop-linux.png`, `e2e/overview.spec.ts-snapshots/overview-desktop-linux.png` and `e2e/hero.spec.ts-snapshots/{library-region,power-core-region}-desktop-linux.png`, `playwright.config.ts`, `.github/workflows/ci.yml`
+- `research/`:
+  - `sources.md`;
+  - `room-dossiers/*` (the console dossier carries the Ex3 proportions table; `journey-interior.md` carries the Ex5 known vs inferred feature table);
+  - `connection-decisions.md` (with Ex4's built paths);
+  - `architecture-proposal.md` (§F4 acceptance mapping);
+  - `geometry-tasks.md` (all `blocked_access`);
+  - `layout-hypothesis.md` (Ex4 placements, levels and rejected alternatives).
+
+## Validation
+
+Ex9 run, in this container (Linux, SwiftShader):
+
+- **Checks:** `npm run lint`, `npm run typecheck` and `npm run build` pass, with no warnings. `npx prettier --check` passes on `src`, `tests`, `e2e` and the changed docs.
+- **Unit:** `npm test` passes: 332 tests in 33 files.
+- **E2E:** `npm run test:e2e` passes: 68 passed, 6 skipped.
+  - J8 is touch-only, so it skips on desktop; the four baselines are desktop-only, so they skip on mobile.
+  - J1–J8, `perf.spec.ts` and the new `integration.spec.ts` pass on both projects.
+  - All four baselines pass unchanged (no snapshot was regenerated in Ex9).
+- **Performance** (desktop overview, `budget()`): high 409 calls / 68,856 triangles (shadow pass included), medium 243 / 34,428, low 217 / 27,692. The overlay adds no draw calls (J5 and `integration.spec.ts`).
+- **CI** (`.github/workflows/ci.yml`):
+  - Runs 5–7 (Ex6–Ex8) failed on the four visual baselines only, with every other step green. The cause and fix are under Completed → Ex9.
+  - The Ex9 commit is the first with the fix. Its result is on the Actions run for that commit (written after this file); if the baselines still differ there, the remaining difference is rendering, not canvas size.
+
+### v1 Definition of Done (build plan items 1–12)
+
+| #   | Item                                                 | Evidence                                                                                                                                                                                                                                                  |
+| --- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Console room recognizable and structurally faithful  | `tests/world/console.test.ts` and `consoleBuild.test.ts` (18 ribs, three decks, stair bearings, exterior bridge, rings); proportions with basis in `research/room-dossiers/console-room.md`; `console-room` baseline; `e2e/console.spec.ts`               |
+| 2   | All Tier-1 spaces exist                              | `integrity.test.ts` "places exactly the v1 Tier-1 nodes"; `skeleton.test.ts` "describes every placed Tier-1 room"; J1 (every placed room rendered)                                                                                                        |
+| 3   | Every Tier-1 space physically connected              | `skeleton.test.ts`: the validator walks from C-M to every placed room with portals disabled, reaching ENG-01 only by B37, and agrees with the graph; `connectivity.test.ts` (each room has a route; no isolated room)                                     |
+| 4   | Structure understood from the isometric overview     | `overview` baseline (one connected structure; region tones descend from culture to the engine); `e2e/overview.spec.ts` selects every placed room by a real click, and C-LAD under the section clip                                                        |
+| 5   | Rotate, pan, zoom, select, focus                     | J2, J3 and J4 (`scene.spec.ts`, `selection.spec.ts`), on desktop and touch                                                                                                                                                                                |
+| 6   | Cutaway exposes deep spaces cleanly                  | J7 (`cutaway.spec.ts`: isolate the core and pick ENG-01, focus mode, section stops); `integration.spec.ts` (C-LAD picked under the section, then focused)                                                                                                 |
+| 7   | Routes through real corridors and stairs             | J6 (`route.spec.ts`); `routes.test.ts` (weights are walk-line lengths along the built paths); `integration.spec.ts`                                                                                                                                       |
+| 8   | Evidence metadata on every major room and connection | `integrity.test.ts` (each room has an evidence record; A–C claims cite sources; inferred or D/E edges carry inference metadata); `infoPanel.test.ts` (five separate axes)                                                                                 |
+| 9   | Inferred geometry visibly distinct from sourced      | J5 (`research.spec.ts`: the overlay recolours the model, with a legend); `overlay.test.ts`; B37 labelled INF-E (`overview.spec.ts`)                                                                                                                       |
+| 10  | Desktop smooth, mobile usable                        | `perf.spec.ts` (each tier within its call and triangle budget at the overview); J8 (`mobile.spec.ts`). Caveats: real devices were not measured (SwiftShader), and the low tier exceeds its triangle budget while a route is shown (Known incomplete work) |
+| 11  | Graph and connectivity tests pass                    | `connectivity.test.ts`, `graph.test.ts`, `skeleton.test.ts` and `validate.test.ts`, in every unit run                                                                                                                                                     |
+| 12  | Core interactions pass Playwright E2E                | J1–J8, both projects, 68 passed                                                                                                                                                                                                                           |
+
+### Bible §F4 acceptance tests
+
+| Check      | Evidence                                                                                                                                                                                                                                                                                                                                                                                              |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Data       | `integrity.test.ts`: the B01–B37 endpoints and anchors exist; each displayed room has a source-linked presence record                                                                                                                                                                                                                                                                                 |
+| Topology   | `connectivity.test.ts`: BFS from C-M with B28 disabled reaches all 19 placed nodes, and 34 of the full inventory (only X-01 to X-03 are not reached)                                                                                                                                                                                                                                                  |
+| Mesh       | `skeleton.test.ts`: the walk over the built floors through real openings reaches ENG-01 via B37, and loses it without B37                                                                                                                                                                                                                                                                             |
+| Spatial    | Validator rules `volume-overlap`, `dangling-end`, `path-supported`, `element-lands` and `surface-disjoint`, over the whole map with the hero rooms (`skeleton.test.ts`, `hero.test.ts`)                                                                                                                                                                                                               |
+| Visual     | Every v1 edge is built; there are no boxes or connector bars; every placed room is clickable in the overview or under the section clip (`overview.spec.ts`). The far leg of B37 is exposed by focusing an end room, checked by eye only                                                                                                                                                               |
+| Provenance | No metric units in runtime data. `integrity.test.ts` scans `src/data` (except the source notes in `evidence.ts`) and `console.test.ts` scans `src/world`. An Ex9 scan of all of `src` with `grep -rlE "\b[0-9]+(\.[0-9]+)?\s?(m\|cm\|mm\|metres?\|meters?\|ft\|feet)\b"` matches only `src/data/evidence.ts`: a lens focal length ("18 mm") and a rejected "~50 ft" lead, both quoted in source notes |
+| Era        | `integrity.test.ts`: no placed room is jettisoned or deleted, and the reservations stay unplaced. Restoring rooms is post-v1                                                                                                                                                                                                                                                                          |
+
+## Known incomplete work
+
+- **Routes.**
+  - The cost is the walk-line length of each edge only. The walk across a room between its two anchors is not counted, because the graph's nodes are rooms; a route can therefore prefer two far-apart doors of a big room.
+  - Inside a room the route line joins the arrival and departure anchors straight. That can pass through room furniture (the console's chord between B02 and B03) or across a void; walk lines inside corridors are exact.
+  - The tube is depth-tested, so walls the cut keeps hide it; it is not ghosted or cut by the visual state (it is clipped at the section only). Choosing a route does not frame the camera on it.
+- **Overlay.** Classes come from the mesh tags: a room's existence (presence) and an edge's provenance. Dimensions are never graded (all `normalized_authored`), and the info panel's indicator says so. Region tones return when the overlay is off.
+- **Labels.**
+  - Region labels still overlap in the overview ("POWER CORE" over the console's lower labels, "CONTROL NEXUS" over a reported-door label).
+  - Structure mode zoomed in is dense: anchor labels in the console and the corridor junctions overlap. There is no collision avoidance.
+  - The two feature labels (the reconfiguring B18 door, the B28 portal) belong to edges, so the default mode never shows them; they show in the Research mode as source notes.
+- **Cut geometry.**
+  - The cut is a vertical plane through each owner's spine, facing the camera. Side walls are cut along their near half at oblique yaws, by design (a section through the room's centre line).
+  - The section leaves cut solids open (no caps), so a clipped wall reads hollow at the cut. Stencil caps were not added in Ex8 (out of its scope list).
+  - The dither keeps 1/8 of pixels on cut walls and 1/4 on ghosts. The pattern is pixel-aligned and stable, but it reads as a fine grid; Ex8 left it unchanged.
+- **Occlusion that remains.** C-LAD and the B06 ladder are occluded in the default overview and exposed by the section (stop −8). The far (westward) leg of B37 lies behind the Eye chamber's far wall, which the cut keeps. Focusing ENG-01 or M-02 (B37's ends) keeps B37 solid and ghosts the chamber, which shows the leg (checked by eye); no test covers it.
+- **Controls.**
+  - Focus mode frames the room on entry, but does not restore the camera on exit.
+  - Home resets only the camera; "Reset cutaway" resets only the visibility.
+  - On a 390-px toolbar, "Rooms", "Cutaway", "Research" and "Route" sit past the right edge until the row is scrolled.
+- **Performance and quality.**
+  - **Low-tier triangle budget is exceeded while a route is shown (found in Ex9, not fixed: outside the integration-only scope).**
+    - The route tube (`createRouteLine`, `TubeGeometry` sampled every `ROUTE_LINE_SAMPLE_NU` with 6 radial segments) adds about 8.5k triangles in one draw call.
+    - On the low tier, measured with `budget()`: the bare overview draws 217 calls / 27,692 triangles; with ENG-01 → C-M routed it draws 218 / 36,260, over the 36,000 budget. Selecting ENG-01 adds 864 more (its debris returns under reduced detail).
+    - Calls stay within budget. The only visible effect is the stats overlay's `.over-budget`. Auto-downgrade reads frame times, not budgets.
+    - Fix: sample the tube per straight segment (a few rings per leg) instead of at an even spacing.
+  - The budgets are calibrated on SwiftShader at 1280×800 and 390×844, at the bare overview; real GPUs were not measured. The auto-downgrade thresholds (33.3 ms, 75% of 40 frames) are untuned on real devices, and it never upgrades.
+  - Frame time is measured between back-to-back rendered frames (CPU-side rAF intervals); GPU time is not measured.
+  - Outlines are still one draw call per merged mesh; merging outlines across parts of an owner would need per-part cut state in the line shader.
+  - Shadows are key-light only (high tier). Point lights cast none. Changing tier toggles lights and shadow maps, which recompiles the shared programs once.
+  - Low tier hides panels, debris and props outside the selected room; that includes the frozen-explosion debris, which is a hero feature.
+- **Look.** The motifs are procedural approximations (hex grating, roundels, hex seams), not measured from the sets. Library lamplight is placed at the box centre, not on authored lamp positions. No textures (KTX2 was out of scope).
+- Library ladders rise from the floor beside the galleries' inner railings. The railings are not broken where a ladder arrives; this is cosmetic.
+- Tier-2 doors are closed thresholds only (no Tier-2 rooms). The kit is axis-aligned only, so paths must use axis-aligned legs (tested).
+- Region tones still set the colours; Ex8 added finishes, motifs and accents on top. The visual state owns every override: the selection highlight, the rest emissive (glow and accents), the overlay colours and the route tint, and now the shadow-pass materials.
+
+## Next execution
+
+None: v1 is complete. A new plan should start from the backlog below and the "Known incomplete work" above.
+
+## Post-v1 backlog
+
+In rough priority order:
+
+1. **Tier 2 rooms** (build plan E9).
+   - Observatory, pool and residential rooms behind the closed H-02 and H-01 anchors (B10, B11 and the other reserved doors), and the Tier-2 doors on M-01.
+   - Each needs its edge in `connections.ts`, a layout box, a shell or hero description, and the validator and connectivity gates.
+2. **Route tube cost.** Bring a routed scene back inside the low-tier triangle budget (see Performance above), then assert the budget with a route shown.
+3. **Exploded view.** Separate the levels vertically for reading the stack, as an alternative to the section clip. It needs its own visual-state layer, and picks must follow the moved geometry.
+4. **GLB/KTX2 asset pipeline.** Optional authored meshes for the hero rooms, behind the same describe → build and mesh-tagging contracts (Blender export, KTX2 textures, lazy loading per room). v1 is procedural only.
+5. **Calibrated measurements.** Replace authored proportions only when a measurement chain exists (production drawings, measured set photography). The geometry tasks in `research/geometry-tasks.md` are all `blocked_access`. Keep NU as the unit, and record any scale factor as evidence, never as metres in runtime data.
+6. **Era and configuration states.**
+   - Restoring jettisoned or archived rooms as explicit configuration states (bible §F3.6, §F4 Era); the v1 data holds the stable snapshot only.
+   - The ARS `reconfiguring` door as a toggleable state.
+7. **Readability polish.**
+   - Label collision avoidance (region labels over console labels; dense anchor labels in Structure mode).
+   - Section caps on cut solids.
+   - Focus-mode exit that restores the camera.
+   - A route that frames the camera, and room-interior walk costs in routing.
+   - A toolbar overflow cue at 390 px.
+8. **Real-device performance.** Tune the auto-downgrade thresholds and budgets on real GPUs and phones; measure GPU time.
